@@ -171,7 +171,7 @@ export default function UserManagement() {
         <div className="p-4 rounded-2xl bg-purple-500/10 text-purple-500 shadow-inner"><ShieldCheck size={36}/></div>
         <div>
           <h1 className="text-2xl font-black text-[var(--foreground)] tracking-tight">System Access Manager</h1>
-          <p className="text-sm text-[var(--muted-foreground)]">Kelola role dan alokasi akun EA untuk para Investor.</p>
+          <p className="text-sm text-[var(--muted-foreground)]">Kelola role dan alokasi akun EA untuk Admin & Investor.</p>
         </div>
       </div>
 
@@ -210,7 +210,7 @@ export default function UserManagement() {
               <label className="text-xs font-bold text-[var(--muted-foreground)] uppercase">Hak Akses (Role)</label>
               <select value={formData.role} onChange={(e) => setForm({...formData, role: e.target.value})} className="w-full bg-[var(--background)] border border-[var(--card-border)] text-[var(--foreground)] text-sm rounded-xl px-4 py-3 outline-none cursor-pointer">
                 <option value="investor">Investor (Dashboard Terbatas)</option>
-                <option value="admin">Admin (Kelola Lisensi)</option>
+                <option value="admin">Admin (Kelola Lisensi & Dashboard Terbatas)</option>
               </select>
             </div>
 
@@ -241,7 +241,7 @@ export default function UserManagement() {
               <tbody className="divide-y divide-[var(--card-border)]">
                 {Object.keys(users).map((uid) => {
                   const userObj = users[uid];
-                  // Hitung jumlah akun EA yang dimiliki investor ini
+                  // Hitung jumlah akun EA yang dimiliki user ini
                   const ownedCount = userObj.owned_accounts ? Object.keys(userObj.owned_accounts).length : 0;
 
                   return (
@@ -258,9 +258,9 @@ export default function UserManagement() {
                         </div>
                       </td>
 
-                      {/* Kolom Indikator Jumlah Akun */}
+                      {/* 🟢 FIX: Kolom Indikator Jumlah Akun (Berlaku untuk Admin & Investor) */}
                       <td className="py-4 text-center">
-                        {userObj.role === 'investor' ? (
+                        {userObj.role !== 'super_admin' ? (
                           <span className={`text-[11px] font-bold px-2 py-1 rounded-md ${ownedCount > 0 ? 'bg-blue-500/10 text-blue-500' : 'bg-slate-500/10 text-slate-500'}`}>
                             {ownedCount} Akun EA
                           </span>
@@ -281,8 +281,8 @@ export default function UserManagement() {
 
                       <td className="py-4 text-right pr-2">
                          <div className="flex items-center justify-end gap-2">
-                           {/* Tombol Khusus: Mengelola Akses EA untuk Investor */}
-                           {userObj.role === 'investor' && (
+                           {/* 🟢 FIX: Tombol Kelola Akses EA muncul untuk Admin & Investor */}
+                           {userObj.role !== 'super_admin' && (
                              <button 
                                onClick={() => openAccessModal(uid, userObj)} 
                                className="p-2 bg-blue-500/10 text-blue-500 hover:bg-blue-500 hover:text-white rounded-lg transition-colors title='Kelola Akses EA'"
