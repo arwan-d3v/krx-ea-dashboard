@@ -1,5 +1,36 @@
 {
   "rules": {
+    
+    // =====================================================================
+    // 1. NODE PENGGUNA & HAK AKSES (RBAC - ROLE BASED ACCESS CONTROL)
+    // =====================================================================
+    "users": {
+      "$uid": {
+        // READ: User bisa membaca profilnya sendiri, ATAU Super Admin & Admin bisa membaca semuanya
+        ".read": "auth != null && (auth.uid === $uid || root.child('users/' + auth.uid + '/role').val() === 'super_admin' || root.child('users/' + auth.uid + '/role').val() === 'admin')",
+        
+        // WRITE: HANYA Super Admin yang diizinkan mendaftar, mengedit, atau menghapus pengguna
+        ".write": "auth != null && root.child('users/' + auth.uid + '/role').val() === 'super_admin'"
+      }
+    },
+
+    // =====================================================================
+    // 2. NODE DATA MARKET & TERMINAL BOT (DATA ISOLATION)
+    // =====================================================================
+    "account_data": {
+      "$account_id": {
+        // READ: Bisa dibaca jika user adalah Super Admin/Admin, ATAU jika $account_id ini bernilai 'true' di node 'owned_accounts' milik Investor tersebut
+        ".read": "auth != null && (root.child('users/' + auth.uid + '/role').val() === 'super_admin' || root.child('users/' + auth.uid + '/role').val() === 'admin' || root.child('users/' + auth.uid + '/owned_accounts/' + $account_id).val() === true)",
+        
+        // WRITE: Data ini biasanya ditulis oleh Bot Python (menggunakan Admin SDK yang menembus rules). 
+        // Jika dari Web, hanya Super Admin dan Admin yang boleh menulis.
+        ".write": "auth != null && (root.child('users/' + auth.uid + '/role').val() === 'super_admin' || root.child('users/' + auth.uid + '/role').val() === 'admin')"
+      }
+    },
+
+    // =====================================================================
+    // 3. NODE LISENSI & ALERTS (MENGGUNAKAN ATURAN LAMA ANDA)
+    // =====================================================================
     "licenses": {
       "$account": {
         ".read": "auth != null || true",

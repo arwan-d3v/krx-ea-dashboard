@@ -9,16 +9,19 @@ import {
   Wallet, ArrowDownToLine, ArrowUpFromLine, 
   CalendarDays, BarChart3, Clock, AlertTriangle, 
   Server, User, ChevronDown, Cpu, Terminal, 
-  Crown, PawPrint, Radar, Binary, Zap, LogOut, Loader2
+  Crown, PawPrint, Radar, Binary, Zap, LogOut, Loader2, Lock
 } from "lucide-react";
 import { 
   Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart 
 } from 'recharts';
 import { db, auth } from "../../lib/firebase";
 import { ref, onValue } from "firebase/database";
-import { onAuthStateChanged, signOut } from "firebase/auth";
+import { signOut } from "firebase/auth";
 import { useRouter } from "next/navigation";
 import dynamic from 'next/dynamic';
+
+// Import AuthContext Global untuk mengambil User & Role
+import { useAuth } from "../context/AuthContext";
 
 const Lottie = dynamic(() => import('lottie-react'), { ssr: false });
 
@@ -66,7 +69,9 @@ const dict = {
     th_vol: "Volume",
     th_pnl: "Profit (PnL)",
     searching_liq: "Searching for institutional liquidity gap...",
-    no_account: "No EA accounts connected."
+    no_account: "No EA accounts connected.",
+    restricted_access: "RESTRICTED ACCESS: No quantitative nodes assigned.",
+    contact_admin: "Please contact your Administrator or Creator to allocate your EA node."
   },
   id: {
     port_title: "PORTFOLIO AKTIF",
@@ -98,7 +103,9 @@ const dict = {
     th_vol: "Volume",
     th_pnl: "Profit (PnL)",
     searching_liq: "Mencari celah likuiditas institusional...",
-    no_account: "Tidak ada akun EA yang terhubung."
+    no_account: "Tidak ada akun EA yang terhubung.",
+    restricted_access: "AKSES TERBATAS: Belum ada node kuantitatif yang dialokasikan.",
+    contact_admin: "Silakan hubungi Administrator atau Kreator untuk mengalokasikan node EA Anda."
   }
 };
 
@@ -107,7 +114,9 @@ const dict = {
 // ============================================================================
 export default function Dashboard() {
   const router = useRouter();
-  const [isAuthLoading, setIsAuthLoading] = useState(true);
+  
+  // Menggunakan Context Global untuk User, Role, & Status Loading
+  const { user, role, loading: isAuthLoading } = useAuth();
 
   // Default Language: English
   const [lang, setLang] = useState("en"); 
@@ -125,15 +134,11 @@ export default function Dashboard() {
 
   // === FIREBASE AUTHENTICATION GUARD ===
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        setIsAuthLoading(false);
-      } else {
-        router.push("/login");
-      }
-    });
-    return () => unsubscribe();
-  }, [router]);
+    // Jika tidak sedang loading auth dan user tidak ada, tendang ke login
+    if (!isAuthLoading && !user) {
+      router.push("/login");
+    }
+  }, [user, isAuthLoading, router]);
 
   // === AUTO LOGOUT / IDLE TRACKER (5 MINUTES) ===
   useEffect(() => {
@@ -164,6 +169,83 @@ export default function Dashboard() {
     };
   }, [router]);
 
+
+  // ============================================================================
+  // SECTION 6: FIREBASE DATA FETCHING (MASTER & INVESTOR DATA ISOLATION)
+  // ============================================================================
+  useEffect(() => {
+    if (isAuthLoading || !user || !role) return;
+
+    let unsubAll = null;
+    let unsubUser = null;
+    let accountUnsubs = [];
+
+    const clearAccountUnsubs = () => {
+      accountUnsubs.forEach(unsub => unsub());
+      accountUnsubs = [];
+    };
+
+    // LOGIKA ADMIN: Tarik SEMUA data akun
+    if (role === 'super_admin' || role === 'admin') {
+      const accountsRef = ref(db, 'account_data');
+      unsubAll = onValue(accountsRef, (snapshot) => {
+        const data = snapshot.val() || {};
+        setAllAccountsData(data);
+        const accounts = Object.keys(data);
+        setAccountsList(accounts);
+        setIsLoading(false);
+      });
+    } 
+    // LOGIKA INVESTOR: Tarik HANYA data akun yang dialokasikan
+    else if (role === 'investor') {
+      const userRef = ref(db, `users/${user.uid}/owned_accounts`);
+      unsubUser = onValue(userRef, (snapshot) => {
+        const owned = snapshot.val() || {};
+        // Filter ID yang nilainya "true"
+        const allowedIds = Object.keys(owned).filter(k => owned[k] === true);
+        setAccountsList(allowedIds);
+        
+        clearAccountUnsubs(); // Bersihkan listener lama jika hak akses berubah
+
+        if (allowedIds.length === 0) {
+          setAllAccountsData({});
+          setIsLoading(false);
+          return;
+        }
+
+        // Buka listener khusus untuk setiap nomor akun yang diizinkan
+        allowedIds.forEach(accId => {
+          const accRef = ref(db, `account_data/${accId}`);
+          const unsubAcc = onValue(accRef, (accSnap) => {
+            setAllAccountsData(prev => ({
+              ...prev,
+              [accId]: accSnap.val() || {} // Update partial tanpa menimpa akun lain
+            }));
+            setIsLoading(false);
+          });
+          accountUnsubs.push(unsubAcc);
+        });
+      });
+    }
+
+    return () => {
+      if (unsubAll) unsubAll();
+      if (unsubUser) unsubUser();
+      clearAccountUnsubs();
+    };
+  }, [user, role, isAuthLoading]);
+
+  // Menyesuaikan Dropdown Pilihan Akun
+  useEffect(() => {
+    if (accountsList.length > 0 && !accountsList.includes(selectedAccountId)) {
+      setSelectedAccountId(accountsList[0]);
+    }
+  }, [accountsList, selectedAccountId]);
+
+
+  // ==========================================
+  // METADATA & DATA FORMATTING
+  // ==========================================
   const currentAccountData = allAccountsData[selectedAccountId] || {};
   const metaData = currentAccountData.metadata || {};
   const botType = metaData.bot_type || "NON_ML";
@@ -172,9 +254,6 @@ export default function Dashboard() {
 
   const getGMT8Time = () => new Date().toLocaleTimeString('en-US', { hour12: false, timeZone: 'Asia/Singapore' });
 
-  // ==========================================
-  // SECTION 4: BOT THEME DICTIONARY
-  // ==========================================
   const getBotTheme = (type) => {
     switch(type) {
       case 'GOD_MODE':
@@ -184,14 +263,14 @@ export default function Dashboard() {
       case 'ENIGMA_OTE':
         return { name: "KRX - ENIGMA IMBALANCE", icon: Radar, exe: "ENIGMA_TRAP_V5.exe", vibe: "Spatial Recon | Cipher BPR Anomalies", accent: "text-emerald-500", bg: "bg-emerald-500/10", border: "border-emerald-500/40", brackets: "border-emerald-500", glow: "shadow-[0_0_25px_rgba(16,185,129,0.25)]", termBg: "bg-slate-900 dark:bg-[#000500]", termText: "text-emerald-400", sysText: "text-purple-500" };
       default: 
-        return { name: "KLASIK EA", icon: Cpu, accent: "text-blue-500", termText: "text-blue-400", sysText: "text-blue-300" };
+        return { name: "CLASSIC GRID EA", icon: Cpu, accent: "text-blue-500", termText: "text-blue-400", sysText: "text-blue-300" };
     }
   };
   const theme = getBotTheme(botType);
   const BotIcon = theme.icon;
 
   // ==========================================
-  // SECTION 5: FIREBASE CLOUD NODE CONNECTION
+  // SECTION 5: FIREBASE CLOUD NODE CONNECTION (TERMINAL)
   // ==========================================
   const terminalData = currentAccountData?.ai_terminal;
   const lastLogTimeRef = useRef(0);
@@ -234,7 +313,6 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (botType === "NON_ML") return;
-    
     const watchdog = setInterval(() => {
       const now = Date.now();
       if (lastLogTimeRef.current > 0 && (now - lastLogTimeRef.current > 25000)) {
@@ -242,14 +320,11 @@ export default function Dashboard() {
         setRobotState('SYSTEM_ERROR');
       }
     }, 5000);
-    
     return () => clearInterval(watchdog);
   }, [botType]);
 
   useEffect(() => {
-    if (!wsConnected) {
-      setPing(0); return;
-    }
+    if (!wsConnected) { setPing(0); return; }
     const pingInterval = setInterval(() => setPing(Math.floor(Math.random() * 26) + 12), 3500);
     return () => clearInterval(pingInterval);
   }, [wsConnected]);
@@ -269,36 +344,11 @@ export default function Dashboard() {
           setTerminalLogs(prev => [...prev, { time: getGMT8Time(), text: randomMsg, type: "SCANNING_IDLE" }].slice(-40));
       }
     }, 45000); 
-
     return () => clearInterval(idleLogInterval);
   }, [wsConnected, robotState, botType]);
 
   // ==========================================
-  // SECTION 6: FIREBASE DATA FETCHING (MASTER)
-  // ==========================================
-  useEffect(() => {
-    const accountsRef = ref(db, 'account_data');
-    const unsubscribe = onValue(accountsRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data) {
-        setAllAccountsData(data);
-        const accounts = Object.keys(data);
-        setAccountsList(accounts);
-        if (!selectedAccountId || !accounts.includes(selectedAccountId)) {
-          setSelectedAccountId(accounts[0]);
-        }
-      } else {
-        setAllAccountsData({});
-        setAccountsList([]);
-      }
-      setIsLoading(false);
-    });
-    return () => unsubscribe();
-  }, [selectedAccountId]);
-
-
-  // ==========================================
-  // SECTION 7: DATA FORMATTING
+  // METRICS FORMATTING
   // ==========================================
   const liveData = currentAccountData.realtime_stats || {};
   const openTrades = currentAccountData.open_trades || [];
@@ -350,7 +400,9 @@ export default function Dashboard() {
     return theme.termText;
   };
 
-  // === TAMPILAN LOADING SAAT CEK KEAMANAN (BAHASA INGGRIS) ===
+  // ==========================================
+  // TAMPILAN LOADING DAN RESTRIKSI AKSES
+  // ==========================================
   if (isAuthLoading) {
     return (
       <div className="flex justify-center items-center h-screen bg-[#030712] font-mono text-blue-500 animate-pulse text-sm tracking-widest uppercase">
@@ -361,15 +413,26 @@ export default function Dashboard() {
 
   if (isLoading) return <div className="flex justify-center items-center h-screen font-bold text-[var(--primary)] animate-pulse text-xl bg-[#030712]">Connecting to Server...</div>;
   
+  // TAMPILAN JIKA INVESTOR BELUM DIBERI AKSES AKUN APAPUN
   if (accountsList.length === 0) return (
-    <div className="flex flex-col items-center justify-center h-[80vh] space-y-4">
-      <AlertTriangle size={64} className="text-orange-500 opacity-50" />
-      <h2 className="text-2xl font-bold text-[var(--foreground)]">{t.no_account}</h2>
+    <div className="flex flex-col items-center justify-center h-[80vh] space-y-4 px-6 text-center">
+      {role === 'investor' ? (
+        <>
+          <Lock size={64} className="text-red-500 opacity-50 mb-2" />
+          <h2 className="text-xl md:text-2xl font-black text-red-500 uppercase tracking-widest">{t.restricted_access}</h2>
+          <p className="text-sm font-bold text-[var(--muted-foreground)]">{t.contact_admin}</p>
+        </>
+      ) : (
+        <>
+          <AlertTriangle size={64} className="text-orange-500 opacity-50 mb-2" />
+          <h2 className="text-2xl font-bold text-[var(--foreground)]">{t.no_account}</h2>
+        </>
+      )}
     </div>
   );
 
   // ==========================================
-  // SECTION 8: UI RENDERING & CUSTOM CSS
+  // SECTION 8: UI RENDERING (TAMPILAN UTAMA)
   // ==========================================
   return (
     <div className="p-4 md:p-8 space-y-6 max-w-7xl mx-auto font-sans transition-colors duration-300">
