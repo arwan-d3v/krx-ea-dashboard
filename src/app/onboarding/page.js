@@ -141,7 +141,7 @@ export default function OnboardingPage() {
             </div>
 
             <button type="button" onClick={nextStep} disabled={!form.fullName || !form.whatsapp} className="w-full bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white font-black text-xs tracking-widest uppercase rounded-xl py-3.5 mt-6 flex items-center justify-center gap-2 transition-all">
-              LANJUT KEUANGAN <ArrowRight size={14}/>
+              LANJUT DETAIL AKUN <ArrowRight size={14}/>
             </button>
           </div>
         )}
