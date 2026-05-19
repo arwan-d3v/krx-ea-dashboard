@@ -7,14 +7,26 @@
         ".write": "auth != null && root.child('users/' + auth.uid + '/role').val() === 'super_admin'"
       }
     },
-    "account_data": {
-      // 🟢 FIX 1: HANYA Super Admin yang boleh menarik SELURUH data sekaligus
+    
+    // 🟢 TAMBAHAN BARU: ATURAN UNTUK NODE GRUP
+    "groups": {
+      // Super Admin & Admin boleh membaca daftar grup
+      ".read": "auth != null && (root.child('users/' + auth.uid + '/role').val() === 'super_admin' || root.child('users/' + auth.uid + '/role').val() === 'admin')",
+      // HANYA Super Admin yang boleh membuat/menghapus grup
+      ".write": "auth != null && root.child('users/' + auth.uid + '/role').val() === 'super_admin'"
+    },
+
+"account_data": {
+      // READ GLOBAL: Hanya Super Admin
       ".read": "auth != null && root.child('users/' + auth.uid + '/role').val() === 'super_admin'",
       
       "$account_id": {
-        // 🟢 FIX 2: Admin & Investor HANYA bisa membaca spesifik ID yang dialokasikan kepadanya
-        ".read": "auth != null && root.child('users/' + auth.uid + '/owned_accounts/' + $account_id).val() === true",
-        ".write": "auth != null && (root.child('users/' + auth.uid + '/role').val() === 'super_admin' || root.child('users/' + auth.uid + '/role').val() === 'admin')"
+        // READ SPESIFIK: Hanya Admin Grup atau Investor Pemilik Akun
+        ".read": "auth != null && (root.child('users/' + auth.uid + '/owned_accounts/' + $account_id).val() === true || root.child('users/' + auth.uid + '/role').val() === 'admin')",
+        
+        // 🟢 FIX: BUKA JALUR WRITE UNTUK EA MT5
+        // Kita izinkan penulisan (write: true) agar WebRequest dari VPS tidak diblokir.
+        ".write": true
       }
     },
     "licenses": {
