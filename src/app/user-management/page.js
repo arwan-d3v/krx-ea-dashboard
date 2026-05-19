@@ -5,50 +5,42 @@ import { db, firebaseConfig } from "../../lib/firebase";
 import { initializeApp } from "firebase/app";
 import { getAuth, createUserWithEmailAndPassword, signOut } from "firebase/auth";
 import { ref, set, onValue, remove } from "firebase/database";
-import { UserPlus, ShieldCheck, Trash2, Mail, Lock, Settings, X, Database, Folders } from "lucide-react";
+import { UserPlus, ShieldCheck, Trash2, Mail, Lock, Settings, X, Database, AlertCircle } from "lucide-react";
 
 export default function UserManagement() {
   const { role } = useAuth();
   const [users, setUsers] = useState({});
-  const [eaAccounts, setEaAccounts] = useState([]); // Daftar akun MT5 (untuk Investor)
-  const [groupsList, setGroupsList] = useState([]); // Daftar Kategori/Grup (untuk Admin)
+  const [eaAccounts, setEaAccounts] = useState([]); 
+  const [groupsList, setGroupsList] = useState([]); 
+  const [approvalQueue, setApprovalQueue] = useState({}); 
 
-  // Form & Status Registrasi
   const [formData, setForm] = useState({ email: "", role: "investor", password: "" });
   const [msg, setMsg] = useState({ type: "", text: "" });
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // === STATE UNTUK MODAL MAPPING (AKUN / GRUP) ===
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [checkedItems, setCheckedItems] = useState({});
   const [isSavingAccess, setIsSavingAccess] = useState(false);
 
-  // ========================================================================
-  // 1. DATA FETCHING: AMBIL DATA USERS, AKUN EA, DAN DAFTAR GRUP
-  // ========================================================================
   useEffect(() => {
     if (role === 'super_admin') {
-      // 1. Tarik Data User
       const usersRef = ref(db, 'users');
       const unsubUsers = onValue(usersRef, (snapshot) => {
         if (snapshot.exists()) setUsers(snapshot.val());
         else setUsers({});
       });
 
-      // 2. Tarik Daftar Akun EA (Untuk Modal Investor)
       const accountsRef = ref(db, 'account_data');
       const unsubAccounts = onValue(accountsRef, (snapshot) => {
         if (snapshot.exists()) setEaAccounts(Object.keys(snapshot.val())); 
         else setEaAccounts([]);
       });
 
-      // 3. Tarik Daftar Grup/Cluster (Untuk Modal Admin)
       const groupsRef = ref(db, 'groups');
       const unsubGroups = onValue(groupsRef, (snapshot) => {
         if (snapshot.exists()) {
           const data = snapshot.val();
-          // Format ke array of objects agar mudah di-render
           const gList = Object.keys(data).map(key => ({ id: key, name: data[key].name }));
           setGroupsList(gList);
         } else {
@@ -56,22 +48,20 @@ export default function UserManagement() {
         }
       });
 
-      return () => {
-        unsubUsers();
-        unsubAccounts();
-        unsubGroups();
-      };
+      const queueRef = ref(db, 'approval_queue');
+      const unsubQueue = onValue(queueRef, (snapshot) => {
+        if (snapshot.exists()) setApprovalQueue(snapshot.val());
+        else setApprovalQueue({});
+      });
+
+      return () => { unsubUsers(); unsubAccounts(); unsubGroups(); unsubQueue(); };
     }
   }, [role]);
 
-  if (role !== 'super_admin') {
-    return <div className="flex h-[80vh] items-center justify-center font-bold text-red-500 text-xl">Akses Ditolak</div>;
-  }
+  if (role !== 'super_admin') return <div className="flex h-screen items-center justify-center font-bold text-red-500 text-xl">Akses Ditolak</div>;
 
-  // ========================================================================
-  // 2. LOGIKA REGISTRASI USER BARU 
-  // ========================================================================
   const handleRegisterUser = async (e) => {
+    // ... [Logika Register Tetap Sama] ...
     e.preventDefault();
     setIsProcessing(true);
     setMsg({ type: "", text: "" });
@@ -79,7 +69,6 @@ export default function UserManagement() {
     try {
       const secondaryApp = initializeApp(firebaseConfig, "SecondaryApp");
       const secondaryAuth = getAuth(secondaryApp);
-
       const userCredential = await createUserWithEmailAndPassword(secondaryAuth, formData.email, formData.password);
       const newUid = userCredential.user.uid; 
 
@@ -88,16 +77,12 @@ export default function UserManagement() {
         role: formData.role,
         createdAt: new Date().toISOString()
       });
-
       await signOut(secondaryAuth);
 
-      setMsg({ type: "success", text: "User berhasil didaftarkan dan siap untuk Login!" });
+      setMsg({ type: "success", text: "User berhasil didaftarkan!" });
       setForm({ email: "", role: "investor", password: "" });
     } catch (error) {
-      console.error(error);
-      if (error.code === 'auth/email-already-in-use') setMsg({ type: "error", text: "Gagal: Email sudah terdaftar di sistem!" });
-      else if (error.code === 'auth/weak-password') setMsg({ type: "error", text: "Gagal: Password minimal 6 karakter!" });
-      else setMsg({ type: "error", text: "Gagal menambahkan user. Periksa koneksi." });
+      setMsg({ type: "error", text: "Gagal menambahkan user." });
     } finally {
       setIsProcessing(false);
       setTimeout(() => setMsg({ type: "", text: "" }), 5000);
@@ -110,36 +95,20 @@ export default function UserManagement() {
     }
   };
 
-  // ========================================================================
-  // 3. LOGIKA MAPPING BERCABANG (AKUN UNTUK INVESTOR, GRUP UNTUK ADMIN)
-  // ========================================================================
   const openAccessModal = (uid, userObj) => {
     setSelectedUser({ uid, email: userObj.email, role: userObj.role });
-    
     const initialChecked = {};
-    
-    // 🟢 PERCABANGAN LOGIKA BERDASARKAN ROLE PENGGUNA
     if (userObj.role === 'admin') {
-      // Admin: Baca dari node 'managed_groups'
-      if (userObj.managed_groups) {
-        Object.keys(userObj.managed_groups).forEach(gId => initialChecked[gId] = userObj.managed_groups[gId]);
-      }
+      if (userObj.managed_groups) Object.keys(userObj.managed_groups).forEach(gId => initialChecked[gId] = userObj.managed_groups[gId]);
     } else {
-      // Investor: Baca dari node 'owned_accounts'
-      if (userObj.owned_accounts) {
-        Object.keys(userObj.owned_accounts).forEach(accId => initialChecked[accId] = userObj.owned_accounts[accId]);
-      }
+      if (userObj.owned_accounts) Object.keys(userObj.owned_accounts).forEach(accId => initialChecked[accId] = userObj.owned_accounts[accId]);
     }
-    
     setCheckedItems(initialChecked);
     setIsModalOpen(true);
   };
 
   const handleCheckboxToggle = (itemId) => {
-    setCheckedItems(prev => ({
-      ...prev,
-      [itemId]: !prev[itemId] 
-    }));
+    setCheckedItems(prev => ({ ...prev, [itemId]: !prev[itemId] }));
   };
 
   const saveAccessMapping = async () => {
@@ -147,30 +116,21 @@ export default function UserManagement() {
     try {
       const finalMapping = {};
       Object.keys(checkedItems).forEach(id => {
-        if (checkedItems[id] === true) {
-          finalMapping[id] = true;
-        }
+        if (checkedItems[id] === true) finalMapping[id] = true;
       });
-
-      // 🟢 PERCABANGAN PENYIMPANAN TARGET NODE
       const targetNode = selectedUser.role === 'admin' ? 'managed_groups' : 'owned_accounts';
       await set(ref(db, `users/${selectedUser.uid}/${targetNode}`), finalMapping);
-      
       setIsModalOpen(false);
-      alert(`Hak akses untuk ${selectedUser.email} berhasil diperbarui!`);
     } catch (error) {
-      console.error("Gagal menyimpan mapping", error);
       alert("Terjadi kesalahan saat menyimpan hak akses.");
     } finally {
       setIsSavingAccess(false);
     }
   };
 
-
   return (
     <div className="p-4 md:p-8 space-y-6 max-w-7xl mx-auto font-sans relative">
       
-      {/* HEADER SECTION */}
       <div className="bg-[var(--card-bg)] rounded-3xl border border-[var(--card-border)] p-6 md:p-8 shadow-sm flex items-center gap-5">
         <div className="p-4 rounded-2xl bg-purple-500/10 text-purple-500 shadow-inner"><ShieldCheck size={36}/></div>
         <div>
@@ -181,7 +141,6 @@ export default function UserManagement() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
-        {/* ================= FORM TAMBAH USER ================= */}
         <div className="lg:col-span-1 bg-[var(--card-bg)] rounded-3xl border border-[var(--card-border)] p-6 md:p-8 shadow-sm h-fit">
           <h2 className="text-lg font-black text-[var(--foreground)] mb-6 flex items-center gap-2">
             <UserPlus className="text-purple-500" size={20}/> Daftarkan User Baru
@@ -203,7 +162,7 @@ export default function UserManagement() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-[var(--muted-foreground)] uppercase">Password (Min. 6 Karakter)</label>
+              <label className="text-xs font-bold text-[var(--muted-foreground)] uppercase">Password</label>
               <div className="relative">
                 <Lock className="absolute left-4 top-3.5 text-[var(--muted-foreground)] opacity-70" size={16} />
                 <input type="text" required minLength="6" value={formData.password} onChange={(e) => setForm({...formData, password: e.target.value})} className="w-full bg-[var(--background)] border border-[var(--card-border)] text-[var(--foreground)] text-sm rounded-xl pl-10 pr-4 py-3 outline-none focus:ring-2 focus:ring-purple-500" placeholder="Minimal 6 karakter"/>
@@ -213,8 +172,8 @@ export default function UserManagement() {
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-[var(--muted-foreground)] uppercase">Hak Akses (Role)</label>
               <select value={formData.role} onChange={(e) => setForm({...formData, role: e.target.value})} className="w-full bg-[var(--background)] border border-[var(--card-border)] text-[var(--foreground)] text-sm rounded-xl px-4 py-3 outline-none cursor-pointer">
-                <option value="investor">Investor (Dashboard Terbatas)</option>
-                <option value="admin">Admin (Manajer Cluster & Grup)</option>
+                <option value="investor">Investor</option>
+                <option value="admin">Admin (Manajer Cluster)</option>
               </select>
             </div>
 
@@ -224,7 +183,6 @@ export default function UserManagement() {
           </form>
         </div>
 
-        {/* ================= TABEL DAFTAR USER ================= */}
         <div className="lg:col-span-2 bg-[var(--card-bg)] rounded-3xl border border-[var(--card-border)] shadow-sm overflow-hidden flex flex-col">
           <div className="p-6 md:p-8 border-b border-[var(--card-border)] flex justify-between items-center">
              <h2 className="text-lg font-black text-[var(--foreground)] flex items-center gap-2">
@@ -246,7 +204,9 @@ export default function UserManagement() {
                 {Object.keys(users).map((uid) => {
                   const userObj = users[uid];
                   
-                  // Hitung metrik cakupan akses
+                  // 🟢 MENAMPILKAN BADGE PENDING JIKA USER MASIH DI APPROVAL CENTER
+                  const isPendingInQueue = Object.values(approvalQueue).some(req => req.uid === uid);
+                  
                   const ownedCount = userObj.owned_accounts ? Object.keys(userObj.owned_accounts).length : 0;
                   const groupCount = userObj.managed_groups ? Object.keys(userObj.managed_groups).length : 0;
 
@@ -264,16 +224,22 @@ export default function UserManagement() {
                         </div>
                       </td>
 
-                      {/* 🟢 TAMPILAN CAKUPAN BERCABANG */}
                       <td className="py-4 text-center">
                         {userObj.role === 'admin' ? (
                           <span className={`text-[11px] font-bold px-2 py-1 rounded-md ${groupCount > 0 ? 'bg-purple-500/10 text-purple-500' : 'bg-slate-500/10 text-slate-500'}`}>
                             {groupCount} Kategori/Grup
                           </span>
                         ) : userObj.role === 'investor' ? (
-                          <span className={`text-[11px] font-bold px-2 py-1 rounded-md ${ownedCount > 0 ? 'bg-blue-500/10 text-blue-500' : 'bg-slate-500/10 text-slate-500'}`}>
-                            {ownedCount} Akun EA
-                          </span>
+                          // 🟢 JIKA PENDING, TAMPILKAN BADGE ORANYE
+                          isPendingInQueue ? (
+                            <span className="text-[10px] font-black px-2 py-1 rounded-md bg-orange-500/10 text-orange-500 border border-orange-500/20 flex items-center justify-center gap-1 w-max mx-auto uppercase">
+                              <AlertCircle size={12}/> Pending Approval
+                            </span>
+                          ) : (
+                            <span className={`text-[11px] font-bold px-2 py-1 rounded-md ${ownedCount > 0 ? 'bg-blue-500/10 text-blue-500' : 'bg-slate-500/10 text-slate-500'}`}>
+                              {ownedCount} Akun EA
+                            </span>
+                          )
                         ) : (
                           <span className="text-[11px] font-bold text-[var(--muted-foreground)]">ALL ACCESS</span>
                         )}
@@ -291,21 +257,13 @@ export default function UserManagement() {
 
                       <td className="py-4 text-right pr-2">
                          <div className="flex items-center justify-end gap-2">
-                           {/* Tombol Akses EA (Untuk Investor dan Admin) */}
                            {userObj.role !== 'super_admin' && (
-                             <button 
-                               onClick={() => openAccessModal(uid, userObj)} 
-                               className={`p-2 rounded-lg transition-colors title='Kelola Akses' ${userObj.role === 'admin' ? 'bg-purple-500/10 text-purple-500 hover:bg-purple-500 hover:text-white' : 'bg-blue-500/10 text-blue-500 hover:bg-blue-500 hover:text-white'}`}
-                             >
+                             <button onClick={() => openAccessModal(uid, userObj)} className={`p-2 rounded-lg transition-colors title='Kelola Akses' ${userObj.role === 'admin' ? 'bg-purple-500/10 text-purple-500 hover:bg-purple-500 hover:text-white' : 'bg-blue-500/10 text-blue-500 hover:bg-blue-500 hover:text-white'}`}>
                                <Settings size={16}/>
                              </button>
                            )}
-
                            {userObj.role !== 'super_admin' && (
-                             <button 
-                               onClick={() => handleDeleteUser(uid)} 
-                               className="p-2 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-lg transition-colors title='Hapus User'"
-                             >
+                             <button onClick={() => handleDeleteUser(uid)} className="p-2 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-lg transition-colors title='Hapus User'">
                                <Trash2 size={16}/>
                              </button>
                            )}
@@ -320,41 +278,26 @@ export default function UserManagement() {
         </div>
       </div>
 
-      {/* ================= MODAL: ALOKASI BERCABANG ================= */}
+      {/* MODAL ALOKASI TETAP SAMA */}
       {isModalOpen && selectedUser && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className={`bg-[#0a0a0a] border border-white/10 w-full max-w-md rounded-3xl shadow-[0_0_40px_rgba(0,0,0,0.3)] overflow-hidden ${selectedUser.role === 'admin' ? 'shadow-purple-500/20' : 'shadow-blue-500/20'}`}>
-            
-            {/* Modal Header */}
             <div className={`p-6 border-b border-white/10 flex justify-between items-center ${selectedUser.role === 'admin' ? 'bg-purple-500/5' : 'bg-blue-500/5'}`}>
               <div>
-                <h3 className="text-lg font-black text-white tracking-tight">
-                  {selectedUser.role === 'admin' ? 'Delegasi Cluster & Grup' : 'Alokasi Akun EA'}
-                </h3>
-                <p className={`text-[10px] font-mono tracking-widest mt-1 ${selectedUser.role === 'admin' ? 'text-purple-400' : 'text-blue-400'}`}>
-                  {selectedUser.email}
-                </p>
+                <h3 className="text-lg font-black text-white tracking-tight">{selectedUser.role === 'admin' ? 'Delegasi Cluster & Grup' : 'Alokasi Akun EA'}</h3>
+                <p className={`text-[10px] font-mono tracking-widest mt-1 ${selectedUser.role === 'admin' ? 'text-purple-400' : 'text-blue-400'}`}>{selectedUser.email}</p>
               </div>
-              <button onClick={() => setIsModalOpen(false)} className="text-slate-500 hover:text-white transition-colors">
-                <X size={24}/>
-              </button>
+              <button onClick={() => setIsModalOpen(false)} className="text-slate-500 hover:text-white transition-colors"><X size={24}/></button>
             </div>
-
-            {/* Modal Body: Daftar Checkbox */}
             <div className="p-6 max-h-[50vh] overflow-y-auto space-y-3 custom-scrollbar">
-              
-              {/* JIKA ADMIN: Tampilkan Daftar Grup */}
+              {/* ISI MODAL TETAP */}
               {selectedUser.role === 'admin' && (
-                groupsList.length === 0 ? (
-                  <p className="text-center text-xs text-slate-500 italic py-4">Belum ada kategori grup di server. Buat di Group Manager.</p>
-                ) : (
+                groupsList.length === 0 ? <p className="text-center text-xs text-slate-500 py-4">Belum ada kategori grup di server.</p> : (
                   groupsList.map(group => (
                     <label key={group.id} className={`flex items-center gap-4 p-4 rounded-xl border cursor-pointer transition-all ${checkedItems[group.id] ? 'bg-purple-500/10 border-purple-500/40' : 'bg-white/5 border-white/10 hover:border-white/20'}`}>
                       <div className="relative flex items-center">
                         <input type="checkbox" className="peer sr-only" checked={checkedItems[group.id] || false} onChange={() => handleCheckboxToggle(group.id)}/>
-                        <div className="w-5 h-5 border-2 border-slate-500 rounded flex items-center justify-center peer-checked:bg-purple-500 peer-checked:border-purple-500 transition-colors">
-                          {checkedItems[group.id] && <ShieldCheck size={14} className="text-white" />}
-                        </div>
+                        <div className="w-5 h-5 border-2 border-slate-500 rounded flex items-center justify-center peer-checked:bg-purple-500 peer-checked:border-purple-500"><ShieldCheck size={14} className="text-white" /></div>
                       </div>
                       <div>
                         <p className={`font-black tracking-tight text-sm ${checkedItems[group.id] ? 'text-purple-400' : 'text-slate-300'}`}>{group.name}</p>
@@ -364,19 +307,13 @@ export default function UserManagement() {
                   ))
                 )
               )}
-
-              {/* JIKA INVESTOR: Tampilkan Daftar Akun */}
               {selectedUser.role === 'investor' && (
-                eaAccounts.length === 0 ? (
-                  <p className="text-center text-xs text-slate-500 italic py-4">Belum ada node akun EA yang menyala di server.</p>
-                ) : (
+                eaAccounts.length === 0 ? <p className="text-center text-xs text-slate-500 py-4">Belum ada node akun EA yang menyala.</p> : (
                   eaAccounts.map(accId => (
                     <label key={accId} className={`flex items-center gap-4 p-4 rounded-xl border cursor-pointer transition-all ${checkedItems[accId] ? 'bg-blue-500/10 border-blue-500/40' : 'bg-white/5 border-white/10 hover:border-white/20'}`}>
                       <div className="relative flex items-center">
                         <input type="checkbox" className="peer sr-only" checked={checkedItems[accId] || false} onChange={() => handleCheckboxToggle(accId)}/>
-                        <div className="w-5 h-5 border-2 border-slate-500 rounded flex items-center justify-center peer-checked:bg-blue-500 peer-checked:border-blue-500 transition-colors">
-                          {checkedItems[accId] && <ShieldCheck size={14} className="text-white" />}
-                        </div>
+                        <div className="w-5 h-5 border-2 border-slate-500 rounded flex items-center justify-center peer-checked:bg-blue-500 peer-checked:border-blue-500"><ShieldCheck size={14} className="text-white" /></div>
                       </div>
                       <div>
                         <p className={`font-black tracking-widest font-mono text-sm ${checkedItems[accId] ? 'text-blue-400' : 'text-slate-300'}`}>{accId}</p>
@@ -387,21 +324,15 @@ export default function UserManagement() {
                 )
               )}
             </div>
-
-            {/* Modal Footer */}
             <div className="p-6 border-t border-white/10 flex justify-end gap-3 bg-black/50">
-              <button onClick={() => setIsModalOpen(false)} className="px-5 py-2.5 rounded-xl text-xs font-bold text-slate-400 hover:text-white hover:bg-white/5 transition-colors">
-                Batal
-              </button>
-              <button onClick={saveAccessMapping} disabled={isSavingAccess} className={`px-5 py-2.5 rounded-xl text-xs font-black text-white uppercase tracking-widest transition-colors flex items-center gap-2 ${selectedUser.role === 'admin' ? 'bg-purple-600 hover:bg-purple-500' : 'bg-blue-600 hover:bg-blue-500'}`}>
+              <button onClick={() => setIsModalOpen(false)} className="px-5 py-2.5 rounded-xl text-xs font-bold text-slate-400 hover:text-white hover:bg-white/5">Batal</button>
+              <button onClick={saveAccessMapping} disabled={isSavingAccess} className={`px-5 py-2.5 rounded-xl text-xs font-black text-white uppercase tracking-widest flex items-center gap-2 ${selectedUser.role === 'admin' ? 'bg-purple-600 hover:bg-purple-500' : 'bg-blue-600 hover:bg-blue-500'}`}>
                 {isSavingAccess ? 'Menyimpan...' : 'Simpan Hak Akses'}
               </button>
             </div>
-            
           </div>
         </div>
       )}
-
     </div>
   );
 }
