@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useState, useEffect } from "react";
 import { 
   LayoutDashboard, BarChart, Key, ShieldCheck, 
-  AlertCircle, UserPlus, Cpu, LogOut, Sun, Moon, Menu, X, Globe 
+  AlertCircle, UserPlus, Cpu, LogOut, Sun, Moon, Menu, X, Globe,
+  Folders // Ikon baru untuk Group Manager
 } from "lucide-react";
 
 import { useAuth } from "../app/context/AuthContext";
@@ -23,6 +24,7 @@ const navDict = {
     manager: "Manager",
     approval: "Approval",
     users: "Users",
+    groups: "Groups", // Tambahan label baru
     ea_control: "EA Control",
     logout: "Logout",
     logout_confirm: "Are you sure you want to exit?",
@@ -35,6 +37,7 @@ const navDict = {
     manager: "Pengelola",
     approval: "Persetujuan",
     users: "Pengguna",
+    groups: "Kelompok", // Tambahan label baru
     ea_control: "Kontrol EA",
     logout: "Keluar",
     logout_confirm: "Apakah Anda yakin ingin keluar?",
@@ -102,6 +105,8 @@ export default function AppNavbar() {
     if (role === "super_admin") {
       items.push(
         { type: "divider" },
+        // 🟢 FIX: Penambahan Menu Group Manager (Warna Ungu/Purple)
+        { href: "/group-manager", icon: <Folders size={18} />, label: t.groups, color: "purple" },
         { href: "/approval-center", icon: <AlertCircle size={18} />, label: t.approval, color: "orange" },
         { href: "/user-management", icon: <UserPlus size={18} />, label: t.users, color: "green" },
         { href: "/ea-manager", icon: <Cpu size={18} />, label: t.ea_control, color: "blue" }
@@ -174,6 +179,8 @@ export default function AppNavbar() {
 function NavLink({ href, icon, label, pathname, color = null, isMobile = false }) {
   const isActive = pathname === href;
   const neonClasses = {
+    // 🟢 FIX: Penambahan styling warna purple untuk tombol Groups
+    purple: isActive ? "bg-purple-600 text-white shadow-[0_0_15px_rgba(147,51,234,0.4)]" : "bg-purple-600/10 text-purple-500 hover:bg-purple-600/20",
     orange: isActive ? "bg-orange-600 text-white shadow-[0_0_15px_rgba(249,115,22,0.4)]" : "bg-orange-600/10 text-orange-500 hover:bg-orange-600/20",
     green: isActive ? "bg-green-600 text-white shadow-[0_0_15px_rgba(34,197,94,0.4)]" : "bg-green-600/10 text-green-500 hover:bg-green-600/20",
     blue: isActive ? "bg-blue-600 text-white shadow-[0_0_15px_rgba(37,99,235,0.4)]" : "bg-blue-600/10 text-blue-500 hover:bg-blue-600/20"
