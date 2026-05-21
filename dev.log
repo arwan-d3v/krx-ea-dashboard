@@ -1,0 +1,289 @@
+
+> my-modern-dashboard@0.1.0 dev
+> next dev
+
+▲ Next.js 16.2.4 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://172.16.0.2:3000
+- Environments: .env.local
+✓ Ready in 560ms
+
+○ Compiling /cron-manager ...
+Error: Can't resolve 'tailwindcss' in 'd:\9. trade\EA\1. EA\Revisi_Register_Dashboard'
+    [2m[at finishWithoutResolve (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:909:18)][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1001:14][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1080:5][0m
+    [2m[at eval (eval at create (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1080:5][0m
+    [2m[at eval (eval at create (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:16:1)][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1080:5][0m
+    [2m[at eval (eval at create (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1080:5][0m
+    [2m[at eval (eval at create (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)][0m {
+  details: "resolve 'tailwindcss' in 'd:\\9. trade\\EA\\1. EA\\Revisi_Register_Dashboard'\n" +
+    '  Parsed request is a module\n' +
+    '  No description file found in d:\\9. trade\\EA\\1. EA\\Revisi_Register_Dashboard or above\n' +
+    '  resolve as module\n' +
+    "    d:\\9. trade\\EA\\1. EA\\Revisi_Register_Dashboard\\node_modules doesn't exist or is not a directory\n" +
+    "    d:\\9. trade\\EA\\1. EA\\node_modules doesn't exist or is not a directory\n" +
+    "    d:\\9. trade\\EA\\node_modules doesn't exist or is not a directory\n" +
+    "    d:\\9. trade\\node_modules doesn't exist or is not a directory\n" +
+    "    d:\\node_modules doesn't exist or is not a directory"
+}
+Error: Can't resolve 'tailwindcss' in 'd:\9. trade\EA\1. EA\Revisi_Register_Dashboard'
+    [2m[at finishWithoutResolve (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:909:18)][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1001:14][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1080:5][0m
+    [2m[at eval (eval at create (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1080:5][0m
+    [2m[at eval (eval at create (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:16:1)][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1080:5][0m
+    [2m[at eval (eval at create (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1080:5][0m
+    [2m[at eval (eval at create (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)][0m {
+  details: "resolve 'tailwindcss' in 'd:\\9. trade\\EA\\1. EA\\Revisi_Register_Dashboard'\n" +
+    '  Parsed request is a module\n' +
+    '  No description file found in d:\\9. trade\\EA\\1. EA\\Revisi_Register_Dashboard or above\n' +
+    '  resolve as module\n' +
+    "    d:\\9. trade\\EA\\1. EA\\Revisi_Register_Dashboard\\node_modules doesn't exist or is not a directory\n" +
+    "    d:\\9. trade\\EA\\1. EA\\node_modules doesn't exist or is not a directory\n" +
+    "    d:\\9. trade\\EA\\node_modules doesn't exist or is not a directory\n" +
+    "    d:\\9. trade\\node_modules doesn't exist or is not a directory\n" +
+    "    d:\\node_modules doesn't exist or is not a directory"
+}
+Error: Can't resolve 'tailwindcss' in 'd:\9. trade\EA\1. EA\Revisi_Register_Dashboard'
+    [2m[at finishWithoutResolve (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:909:18)][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1001:14][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1080:5][0m
+    [2m[at eval (eval at create (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1080:5][0m
+    [2m[at eval (eval at create (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:16:1)][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1080:5][0m
+    [2m[at eval (eval at create (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1080:5][0m
+    [2m[at eval (eval at create (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)][0m {
+  details: "resolve 'tailwindcss' in 'd:\\9. trade\\EA\\1. EA\\Revisi_Register_Dashboard'\n" +
+    '  Parsed request is a module\n' +
+    '  No description file found in d:\\9. trade\\EA\\1. EA\\Revisi_Register_Dashboard or above\n' +
+    '  resolve as module\n' +
+    "    d:\\9. trade\\EA\\1. EA\\Revisi_Register_Dashboard\\node_modules doesn't exist or is not a directory\n" +
+    "    d:\\9. trade\\EA\\1. EA\\node_modules doesn't exist or is not a directory\n" +
+    "    d:\\9. trade\\EA\\node_modules doesn't exist or is not a directory\n" +
+    "    d:\\9. trade\\node_modules doesn't exist or is not a directory\n" +
+    "    d:\\node_modules doesn't exist or is not a directory"
+}
+Error: Can't resolve 'tailwindcss' in 'd:\9. trade\EA\1. EA\Revisi_Register_Dashboard'
+    [2m[at finishWithoutResolve (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:909:18)][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1001:14][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1080:5][0m
+    [2m[at eval (eval at create (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1080:5][0m
+    [2m[at eval (eval at create (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:16:1)][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1080:5][0m
+    [2m[at eval (eval at create (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1080:5][0m
+    [2m[at eval (eval at create (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)][0m {
+  details: "resolve 'tailwindcss' in 'd:\\9. trade\\EA\\1. EA\\Revisi_Register_Dashboard'\n" +
+    '  Parsed request is a module\n' +
+    '  No description file found in d:\\9. trade\\EA\\1. EA\\Revisi_Register_Dashboard or above\n' +
+    '  resolve as module\n' +
+    "    d:\\9. trade\\EA\\1. EA\\Revisi_Register_Dashboard\\node_modules doesn't exist or is not a directory\n" +
+    "    d:\\9. trade\\EA\\1. EA\\node_modules doesn't exist or is not a directory\n" +
+    "    d:\\9. trade\\EA\\node_modules doesn't exist or is not a directory\n" +
+    "    d:\\9. trade\\node_modules doesn't exist or is not a directory\n" +
+    "    d:\\node_modules doesn't exist or is not a directory"
+}
+Error: Can't resolve 'tailwindcss' in 'd:\9. trade\EA\1. EA\Revisi_Register_Dashboard'
+    [2m[at finishWithoutResolve (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:909:18)][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1001:14][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1080:5][0m
+    [2m[at eval (eval at create (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1080:5][0m
+    [2m[at eval (eval at create (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:16:1)][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1080:5][0m
+    [2m[at eval (eval at create (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1080:5][0m
+    [2m[at eval (eval at create (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)][0m {
+  details: "resolve 'tailwindcss' in 'd:\\9. trade\\EA\\1. EA\\Revisi_Register_Dashboard'\n" +
+    '  Parsed request is a module\n' +
+    '  No description file found in d:\\9. trade\\EA\\1. EA\\Revisi_Register_Dashboard or above\n' +
+    '  resolve as module\n' +
+    "    d:\\9. trade\\EA\\1. EA\\Revisi_Register_Dashboard\\node_modules doesn't exist or is not a directory\n" +
+    "    d:\\9. trade\\EA\\1. EA\\node_modules doesn't exist or is not a directory\n" +
+    "    d:\\9. trade\\EA\\node_modules doesn't exist or is not a directory\n" +
+    "    d:\\9. trade\\node_modules doesn't exist or is not a directory\n" +
+    "    d:\\node_modules doesn't exist or is not a directory"
+}
+Error: Can't resolve 'tailwindcss' in 'd:\9. trade\EA\1. EA\Revisi_Register_Dashboard'
+    [2m[at finishWithoutResolve (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:909:18)][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1001:14][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1080:5][0m
+    [2m[at eval (eval at create (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1080:5][0m
+    [2m[at eval (eval at create (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:16:1)][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1080:5][0m
+    [2m[at eval (eval at create (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1080:5][0m
+    [2m[at eval (eval at create (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)][0m {
+  details: "resolve 'tailwindcss' in 'd:\\9. trade\\EA\\1. EA\\Revisi_Register_Dashboard'\n" +
+    '  Parsed request is a module\n' +
+    '  No description file found in d:\\9. trade\\EA\\1. EA\\Revisi_Register_Dashboard or above\n' +
+    '  resolve as module\n' +
+    "    d:\\9. trade\\EA\\1. EA\\Revisi_Register_Dashboard\\node_modules doesn't exist or is not a directory\n" +
+    "    d:\\9. trade\\EA\\1. EA\\node_modules doesn't exist or is not a directory\n" +
+    "    d:\\9. trade\\EA\\node_modules doesn't exist or is not a directory\n" +
+    "    d:\\9. trade\\node_modules doesn't exist or is not a directory\n" +
+    "    d:\\node_modules doesn't exist or is not a directory"
+}
+Error: Can't resolve 'tailwindcss' in 'd:\9. trade\EA\1. EA\Revisi_Register_Dashboard'
+    [2m[at finishWithoutResolve (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:909:18)][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1001:14][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1080:5][0m
+    [2m[at eval (eval at create (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1080:5][0m
+    [2m[at eval (eval at create (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:16:1)][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1080:5][0m
+    [2m[at eval (eval at create (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1080:5][0m
+    [2m[at eval (eval at create (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)][0m {
+  details: "resolve 'tailwindcss' in 'd:\\9. trade\\EA\\1. EA\\Revisi_Register_Dashboard'\n" +
+    '  Parsed request is a module\n' +
+    '  No description file found in d:\\9. trade\\EA\\1. EA\\Revisi_Register_Dashboard or above\n' +
+    '  resolve as module\n' +
+    "    d:\\9. trade\\EA\\1. EA\\Revisi_Register_Dashboard\\node_modules doesn't exist or is not a directory\n" +
+    "    d:\\9. trade\\EA\\1. EA\\node_modules doesn't exist or is not a directory\n" +
+    "    d:\\9. trade\\EA\\node_modules doesn't exist or is not a directory\n" +
+    "    d:\\9. trade\\node_modules doesn't exist or is not a directory\n" +
+    "    d:\\node_modules doesn't exist or is not a directory"
+}
+Error: Can't resolve 'tailwindcss' in 'd:\9. trade\EA\1. EA\Revisi_Register_Dashboard'
+    [2m[at finishWithoutResolve (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:909:18)][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1001:14][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1080:5][0m
+    [2m[at eval (eval at create (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1080:5][0m
+    [2m[at eval (eval at create (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:16:1)][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1080:5][0m
+    [2m[at eval (eval at create (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1080:5][0m
+    [2m[at eval (eval at create (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)][0m {
+  details: "resolve 'tailwindcss' in 'd:\\9. trade\\EA\\1. EA\\Revisi_Register_Dashboard'\n" +
+    '  Parsed request is a module\n' +
+    '  No description file found in d:\\9. trade\\EA\\1. EA\\Revisi_Register_Dashboard or above\n' +
+    '  resolve as module\n' +
+    "    d:\\9. trade\\EA\\1. EA\\Revisi_Register_Dashboard\\node_modules doesn't exist or is not a directory\n" +
+    "    d:\\9. trade\\EA\\1. EA\\node_modules doesn't exist or is not a directory\n" +
+    "    d:\\9. trade\\EA\\node_modules doesn't exist or is not a directory\n" +
+    "    d:\\9. trade\\node_modules doesn't exist or is not a directory\n" +
+    "    d:\\node_modules doesn't exist or is not a directory"
+}
+Error: Can't resolve 'tailwindcss' in 'd:\9. trade\EA\1. EA\Revisi_Register_Dashboard'
+    [2m[at finishWithoutResolve (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:909:18)][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1001:14][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1080:5][0m
+    [2m[at eval (eval at create (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1080:5][0m
+    [2m[at eval (eval at create (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:16:1)][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1080:5][0m
+    [2m[at eval (eval at create (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1080:5][0m
+    [2m[at eval (eval at create (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)][0m {
+  details: "resolve 'tailwindcss' in 'd:\\9. trade\\EA\\1. EA\\Revisi_Register_Dashboard'\n" +
+    '  Parsed request is a module\n' +
+    '  No description file found in d:\\9. trade\\EA\\1. EA\\Revisi_Register_Dashboard or above\n' +
+    '  resolve as module\n' +
+    "    d:\\9. trade\\EA\\1. EA\\Revisi_Register_Dashboard\\node_modules doesn't exist or is not a directory\n" +
+    "    d:\\9. trade\\EA\\1. EA\\node_modules doesn't exist or is not a directory\n" +
+    "    d:\\9. trade\\EA\\node_modules doesn't exist or is not a directory\n" +
+    "    d:\\9. trade\\node_modules doesn't exist or is not a directory\n" +
+    "    d:\\node_modules doesn't exist or is not a directory"
+}
+Error: Can't resolve 'tailwindcss' in 'd:\9. trade\EA\1. EA\Revisi_Register_Dashboard'
+    [2m[at finishWithoutResolve (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:909:18)][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1001:14][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1080:5][0m
+    [2m[at eval (eval at create (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1080:5][0m
+    [2m[at eval (eval at create (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:16:1)][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1080:5][0m
+    [2m[at eval (eval at create (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1080:5][0m
+    [2m[at eval (eval at create (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)][0m {
+  details: "resolve 'tailwindcss' in 'd:\\9. trade\\EA\\1. EA\\Revisi_Register_Dashboard'\n" +
+    '  Parsed request is a module\n' +
+    '  No description file found in d:\\9. trade\\EA\\1. EA\\Revisi_Register_Dashboard or above\n' +
+    '  resolve as module\n' +
+    "    d:\\9. trade\\EA\\1. EA\\Revisi_Register_Dashboard\\node_modules doesn't exist or is not a directory\n" +
+    "    d:\\9. trade\\EA\\1. EA\\node_modules doesn't exist or is not a directory\n" +
+    "    d:\\9. trade\\EA\\node_modules doesn't exist or is not a directory\n" +
+    "    d:\\9. trade\\node_modules doesn't exist or is not a directory\n" +
+    "    d:\\node_modules doesn't exist or is not a directory"
+}
+
+
+#
+# Fatal process out of memory: Re-embedded builtins: set permissions
+#
+----- Native stack trace -----
+
+ 1: 00007FF6BDC9D52D node::MultiIsolatePlatform::DisposeIsolate+5341
+ 2: 00007FF6BF0EC206 v8::base::FatalOOM+54
+ 3: 00007FF6BE98DA56 v8::Function::NewInstance+390
+ 4: 00007FF6BE7F4B3E v8::CppHeap::CollectGarbageInYoungGenerationForTesting+111438
+ 5: 00007FF6BE82804F SSL_CTX_set_default_read_buffer_len+41247
+ 6: 00007FF6BE828B02 SSL_CTX_set_default_read_buffer_len+43986
+ 7: 00007FF6BE8294E2 SSL_CTX_set_default_read_buffer_len+46514
+ 8: 00007FF6BE326C33 v8::internal::Version::GetSONAME+122307
+ 9: 00007FF6BE9B8C36 v8::Isolate::Initialize+662
+10: 00007FF6BDE5366D node::SetIsolateUpForNode+749
+11: 00007FF6BDBB3DA4 RSA_meth_get_flags+212340
+12: 00007FF6BDBB3139 RSA_meth_get_flags+209161
+13: 00007FF6BDBBD020 RSA_meth_get_flags+249840
+14: 00007FF6BE9E2DE6 uv_thread_detach+150
+15: 00007FF6BFC24173 v8::base::UnsignedDivisionByConstant<unsigned __int64>+2903907
+16: 00007FFC08F5E957 BaseThreadInitThunk+23
+17: 00007FFC0A42427C RtlUserThreadStart+44
+Error: Can't resolve 'tailwindcss' in 'd:\9. trade\EA\1. EA\Revisi_Register_Dashboard'
+    [2m[at finishWithoutResolve (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:909:18)][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1001:14][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1080:5][0m
+    [2m[at eval (eval at create (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1080:5][0m
+    [2m[at eval (eval at create (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:16:1)][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1080:5][0m
+    [2m[at eval (eval at create (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1080:5][0m
+    [2m[at eval (eval at create (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)][0m {
+  details: "resolve 'tailwindcss' in 'd:\\9. trade\\EA\\1. EA\\Revisi_Register_Dashboard'\n" +
+    '  Parsed request is a module\n' +
+    '  No description file found in d:\\9. trade\\EA\\1. EA\\Revisi_Register_Dashboard or above\n' +
+    '  resolve as module\n' +
+    "    d:\\9. trade\\EA\\1. EA\\Revisi_Register_Dashboard\\node_modules doesn't exist or is not a directory\n" +
+    "    d:\\9. trade\\EA\\1. EA\\node_modules doesn't exist or is not a directory\n" +
+    "    d:\\9. trade\\EA\\node_modules doesn't exist or is not a directory\n" +
+    "    d:\\9. trade\\node_modules doesn't exist or is not a directory\n" +
+    "    d:\\node_modules doesn't exist or is not a directory"
+}
+Error: Can't resolve 'tailwindcss' in 'd:\9. trade\EA\1. EA\Revisi_Register_Dashboard'
+    [2m[at finishWithoutResolve (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:909:18)][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1001:14][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1080:5][0m
+    [2m[at eval (eval at create (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1080:5][0m
+    [2m[at eval (eval at create (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:16:1)][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1080:5][0m
+    [2m[at eval (eval at create (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)][0m
+    [2m[at d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\enhanced-resolve\lib\Resolver.js:1080:5][0m
+    [2m[at eval (eval at create (d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)][0m {
+  details: "resolve 'tailwindcss' in 'd:\\9. trade\\EA\\1. EA\\Revisi_Register_Dashboard'\n" +
+    '  Parsed request is a module\n' +
+    '  No description file found in d:\\9. trade\\EA\\1. EA\\Revisi_Register_Dashboard or above\n' +
+    '  resolve as module\n' +
+    "    d:\\9. trade\\EA\\1. EA\\Revisi_Register_Dashboard\\node_modules doesn't exist or is not a directory\n" +
+    "    d:\\9. trade\\EA\\1. EA\\node_modules doesn't exist or is not a directory\n" +
+    "    d:\\9. trade\\EA\\node_modules doesn't exist or is not a directory\n" +
+    "    d:\\9. trade\\node_modules doesn't exist or is not a directory\n" +
+    "    d:\\node_modules doesn't exist or is not a directory"
+}
+
+d:\9. trade\EA\1. EA\Revisi_Register_Dashboard\main-stable>More? 
