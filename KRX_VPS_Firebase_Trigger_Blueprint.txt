@@ -1,0 +1,102 @@
+=============================================================================
+KRX QUANTITATIVE - PURE VPS TRIGGER & FIREBASE ARCHITECTURE
+DOCUMENTATION & SYSTEM BLUEPRINT
+=============================================================================
+
+[ ARSITEKTUR "FIREBASE TRIGGER" ]
+Dokumen ini menjelaskan cetak biru (blueprint) sistem notifikasi otomatis KRX 
+yang sepenuhnya mandiri, di mana VPS bertindak sebagai "Jam Weker Murni" 
+(Reminder) tanpa melibatkan API Secret Key (CRON_SECRET) atau cron-job.org.
+
+-----------------------------------------------------------------------------
+ALUR KERJA SISTEM (THE WORKFLOW)
+-----------------------------------------------------------------------------
+1. THE REMINDER (Python di VPS)
+   Sebuah script ringan berjalan 24/7 di VPS KRX. Tugasnya HANYA melihat jam. 
+   Saat jadwal tiba (misal: 08:45 WITA), script ini tidak melakukan komputasi berat, 
+   melainkan hanya mengirim sinyal (trigger) ke Firebase Realtime Database.
+   Contoh: Node `system_triggers/morning_prep` diubah nilainya menjadi `true`.
+
+2. THE BRAIN (Dashboard Next.js)
+   Dashboard Admin KRX memiliki "Listener" (Pendengar) yang aktif memantau node 
+   `system_triggers` di Firebase secara real-time. 
+   Ketika Dashboard mendeteksi `morning_prep` bernilai `true`, ia akan otomatis:
+   - Menarik data lisensi dan akun investor.
+   - Mengelompokkan akun (Agregasi Multi-Account).
+   - Menghitung total balance dan profit harian/mingguan.
+   - Mengambil Quotes Harian sesuai hari kalender.
+
+3. THE MESSENGER (Telegram Bot)
+   Setelah pesan matang diracik oleh Dashboard, Dashboard memanggil Bot Telegram 
+   untuk mengirimkan laporan tersebut ke masing-masing Investor.
+   Terakhir, Dashboard mereset nilai `system_triggers/morning_prep` kembali 
+   menjadi `false` agar siap untuk hari berikutnya.
+
+
+-----------------------------------------------------------------------------
+JADWAL EKSEKUSI (ZONA WAKTU: WITA / ASIA/MAKASSAR)
+-----------------------------------------------------------------------------
+A. MORNING PREP & MONDAY KICKOFF
+   - Waktu      : 08:45 Pagi (Senin s.d Jumat)
+   - Aksi VPS   : Set `triggers/morning_prep` = true
+   - Fungsi     : Memberikan sapaan pembuka, melaporkan status koneksi EA, dan 
+                  informasi saldo awal sebelum market aktif. Khusus hari Senin, 
+                  tema pesan otomatis berubah menjadi "Monday Kickoff".
+
+B. DAILY REPORT
+   - Waktu      : 22:45 Malam (Senin s.d Jumat)
+   - Aksi VPS   : Set `triggers/daily_report` = true
+   - Fungsi     : Melaporkan hasil trading harian, persentase profit harian (%), 
+                  total saldo portofolio gabungan, dan All-Time Gain (Keuntungan 
+                  sepanjang masa).
+
+C. WEEKLY RECAP
+   - Waktu      : 07:05 Pagi (Sabtu)
+   - Aksi VPS   : Set `triggers/weekly_recap` = true
+   - Fungsi     : Rekapitulasi profit selama sepekan (Senin-Jumat) dan ucapan 
+                  istirahat akhir pekan.
+
+
+-----------------------------------------------------------------------------
+DATABASE QUOTES & TEMPLATE PESAN (INTELLIGENT MESSAGE TEMPLATE)
+-----------------------------------------------------------------------------
+
+1. DATABASE KUTIPAN BIJAK (Sistem Rotasi Otomatis)
+   Kutipan akan berganti otomatis berdasarkan kalkulasi matematis hari dalam setahun.
+   
+   - MONDAY SPIRIT (Senin): 
+     "Ketenangan adalah senjata mematikan. Hadapi market dengan disiplin."
+     "Awal pekan adalah kanvas baru. Terapkan aturan dengan ketat, matikan ego."
+   
+   - MINDSET & HEALTH (Selasa - Kamis): 
+     "Volatilitas adalah sahabat bagi yang bersiap, musuh bagi yang panik."
+     "Keraguan membunuh portofolio. Percayai probabilitas dan sistem kuantitatif."
+   
+   - SPIRITUAL & SOCIAL (Jumat): 
+     "Harta adalah titipan. Sebagian dari profit hari ini adalah milik mereka yang membutuhkan."
+   
+   - WEEKEND REFLECTION (Sabtu & Minggu): 
+     "Tinggalkan chart. Waktu bersama keluarga adalah investasi tak ternilai."
+
+
+2. STRUKTUR PESAN NOTIFIKASI (Contoh Daily Report)
+   (Header)  🌙 KRX DAILY REPORT
+   (Sapaan)  Sesi perdagangan hari ini telah ditutup...
+   
+   (Rincian) 📊 DETAIL KINERJA PORTOFOLIO:
+             🔹 Akun 01 [2424343343] -> +$150.00 (+2.5%)
+             🔹 Akun 02 [9998887776] -> +$50.00 (+1.2%)
+             
+   (Summary) ━━━━━━━━━━━━━━━━━━
+             📈 Total Profit Hari Ini: +$200.00
+             💰 Total Balance Portofolio: $3,225.50
+             🏆 All-Time Gain: +$1,050.00
+
+   (Quotes)  💡 KRX Night Reflection: "Kutipan Bijak Disini"
+
+=============================================================================
+KEUNTUNGAN ARSITEKTUR INI:
+- Keamanan Maksimal (Tidak ada Endpoint API publik yang terekspos).
+- Bebas Limit (Tidak ada batasan waktu timeout 10 detik dari layanan API external).
+- Responsif (Firebase Realtime Database memastikan trigger dieksekusi dalam hitungan milidetik).
+=============================================================================

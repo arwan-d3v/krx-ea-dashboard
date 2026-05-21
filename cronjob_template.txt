@@ -1,0 +1,161 @@
+content = """=============================================================================
+KRX QUANTITATIVE - HYBRID VPS-CRON & NOTIFICATION ARCHITECTURE
+DOCUMENTATION & CODE TEMPLATES
+=============================================================================
+
+[ ARSITEKTUR HYBRID ]
+Dokumen ini menjelaskan arsitektur pembaruan di mana sistem "Jam Weker" (Cron) 
+tidak lagi bergantung pada layanan pihak ketiga eksternal, melainkan menggunakan 
+Script Python mandiri yang berjalan 24/7 di dalam VPS KRX.
+
+Alur Kerja (Workflow):
+1. TRIGGER (Python VPS)  : Script Python di VPS menghitung waktu dan menembak 
+                           URL Endpoint API Dashboard Next.js secara presisi.
+2. BRAIN (Dashboard API) : Next.js menerima tembakan, memverifikasi Secret Key, 
+                           menarik data dari Firebase, melakukan kalkulasi 
+                           (agregasi/profit), dan memilih Quotes Harian.
+3. MESSENGER (Bot)       : Next.js meneruskan hasil kalkulasi matang ke Telegram 
+                           API untuk dikirim ke masing-masing Investor.
+
+=============================================================================
+BAGIAN 1: SCRIPT PYTHON (Berjalan 24/7 di VPS)
+=============================================================================
+File: krx_trigger_bot.py
+Deskripsi: Gunakan library 'schedule' dan 'requests'. Jalankan menggunakan 
+PM2, Screen, atau Systemd di Ubuntu/CentOS VPS.
+
+Output kode
+[file-tag: KRX_Hybrid_VPS_Architecture_v2.txt]
+
+```python
+import schedule
+import time
+import requests
+import logging
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
+
+BASE_URL = "[https://krx-ea.pages.dev/api/cron](https://krx-ea.pages.dev/api/cron)"
+HEADERS = {"Authorization": "Bearer KrxSuperSecretKey2026"}
+
+def trigger_endpoint(endpoint_name):
+    url = f"{BASE_URL}/{endpoint_name}"
+    logging.info(f"Memicu eksekusi: {url}")
+    try:
+        response = requests.post(url, headers=HEADERS, timeout=30)
+        logging.info(f"Status: {response.status_code} | Respon: {response.text}")
+    except Exception as e:
+        logging.error(f"Gagal memicu {endpoint_name}: {e}")
+
+# JADWAL EKSEKUSI (Zona Waktu VPS HARUS di-set ke WITA / Asia/Makassar)
+# A. Morning Prep & Monday Kickoff (Senin-Jumat, 08:45 WITA)
+schedule.every().monday.at("08:45").do(trigger_endpoint, "morning-prep")
+schedule.every().tuesday.at("08:45").do(trigger_endpoint, "morning-prep")
+schedule.every().wednesday.at("08:45").do(trigger_endpoint, "morning-prep")
+schedule.every().thursday.at("08:45").do(trigger_endpoint, "morning-prep")
+schedule.every().friday.at("08:45").do(trigger_endpoint, "morning-prep")
+
+# B. Daily Report (Senin-Jumat, 22:45 WITA)
+schedule.every().monday.at("22:45").do(trigger_endpoint, "daily-report")
+schedule.every().tuesday.at("22:45").do(trigger_endpoint, "daily-report")
+schedule.every().wednesday.at("22:45").do(trigger_endpoint, "daily-report")
+schedule.every().thursday.at("22:45").do(trigger_endpoint, "daily-report")
+schedule.every().friday.at("22:45").do(trigger_endpoint, "daily-report")
+
+# C. Weekly Recap (Sabtu, 07:05 WITA)
+schedule.every().saturday.at("07:05").do(trigger_endpoint, "weekly-recap")
+
+logging.info("KRX Python Trigger Engine berjalan. Menunggu jadwal...")
+
+while True:
+    schedule.run_pending()
+    time.sleep(30) # Cek jadwal setiap 30 detik
+=============================================================================
+BAGIAN 2: LOGIKA QUOTES & TEMPLATE PESAN DI DASHBOARD (NEXT.JS)
+A. MESIN KUTIPAN (src/utils/quotes.js)
+export const getDailyQuote = () => {
+const date = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Makassar" }));
+const day = date.getDay();
+const start = new Date(date.getFullYear(), 0, 0);
+const diff = date - start;
+const dayOfYear = Math.floor(diff / (1000 * 60 * 60 * 24));
+
+const quoteDB = {
+monday: ["Ketenangan adalah senjata mematikan. Hadapi market dengan disiplin."],
+midweek: ["Volatilitas adalah sahabat bagi yang bersiap, musuh bagi yang panik."],
+friday: ["Sebagian dari profit hari ini adalah milik mereka yang membutuhkan."],
+weekend: ["Tinggalkan chart. Waktu bersama keluarga adalah profit tak ternilai."]
+};
+
+let selectedCategory = [];
+let theme = "";
+
+if (day === 1) { selectedCategory = quoteDB.monday; theme = "Monday Spirit"; }
+else if (day >= 2 && day <= 4) { selectedCategory = quoteDB.midweek; theme = "Mindset"; }
+else if (day === 5) { selectedCategory = quoteDB.friday; theme = "Spiritual"; }
+else { selectedCategory = quoteDB.weekend; theme = "Weekend Reflection"; }
+
+return { theme: theme, text: selectedCategory[dayOfYear % selectedCategory.length] };
+};
+
+B. ENDPOINT TEMPLATE CONTOH: MORNING PREP
+(src/app/api/cron/morning-prep/route.js)
+import { NextResponse } from 'next/server';
+import { db } from "../../../../lib/firebase";
+import { ref, get } from "firebase/database";
+import { getDailyQuote } from "../../../../utils/quotes";
+
+export async function POST(request) {
+// 1. Validasi tembakan dari Python VPS
+if (request.headers.get("authorization") !== Bearer ${process.env.CRON_SECRET}) {
+return NextResponse.json({ error: "Unauthorized access" }, { status: 401 });
+}
+
+try {
+const licensesSnap = await get(ref(db, 'licenses'));
+const licenses = licensesSnap.val() || {};
+const quote = getDailyQuote();
+const isMonday = new Date().getDay() === 1;
+
+// 2. Agregasi Data (Gabungkan banyak akun ke 1 Telegram ID)
+const telegramGroups = {};
+for (const [accNumber, data] of Object.entries(licenses)) {
+  if (data.status !== "ACTIVE" || !data.telegram) continue;
+  const tgId = data.telegram;
+  if (!telegramGroups[tgId]) telegramGroups[tgId] = { investorName: data.investor_name, accounts: [] };
+  
+  const stats = (await get(ref(db, `account_data/${accNumber}/realtime_stats`))).val() || {};
+  telegramGroups[tgId].accounts.push({ number: accNumber, balance: stats.balance || 0 });
+}
+
+// 3. Susun Pesan & Kirim
+for (const tgId in telegramGroups) {
+  const group = telegramGroups[tgId];
+  let msg = isMonday ? `🌅 <b>KRX MONDAY KICKOFF</b>\\n` : `🌅 <b>KRX MORNING PREP</b>\\n`;
+  msg += `Selamat pagi, <b>${group.investorName}</b>! VPS dan Node EA Anda 100% prima.\\n\\n`;
+  
+  group.accounts.forEach((acc, idx) => {
+    msg += `🔹 <b>Akun 0${idx + 1}</b> [<code>${acc.number}</code>]\\n`;
+    msg += `   └ Saldo : <b>$${acc.balance}</b>\\n\\n`;
+  });
+  
+  msg += `💡 <b>Insight (${quote.theme}):</b> <i>"${quote.text}"</i>\\n`;
+
+  // Eksekusi kirim via internal API Notify
+  await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/notify`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ message: msg, targetChatId: tgId })
+  });
+}
+return NextResponse.json({ success: true });
+} catch (err) {
+return NextResponse.json({ error: err.message }, { status: 500 });
+}
+}
+"""
+
+with open('KRX_Hybrid_VPS_Architecture_v2.txt', 'w', encoding='utf-8') as f:
+f.write(content)
+
+print("[file-tag: KRX_Hybrid_VPS_Architecture_v2.txt]")

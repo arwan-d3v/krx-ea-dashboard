@@ -1,0 +1,25 @@
+{
+  "firebase": {
+    "database_url": "https://krx-modern-dev-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "service_account_path": "serviceAccountKey.json"
+  },
+  "timezone": "Asia/Makassar",
+  "gmt8_offset": "GMT+8 (WITA)",
+  "schedule": {
+    "morning_prep": {
+      "days": ["monday", "tuesday", "wednesday", "thursday", "friday"],
+      "time": "08:45",
+      "description": "Morning prep & Monday kickoff greeting + EA status report"
+    },
+    "daily_report": {
+      "days": ["monday", "tuesday", "wednesday", "thursday", "friday"],
+      "time": "22:45",
+      "description": "Daily trading performance report, profit %, all-time gain"
+    },
+    "weekly_recap": {
+      "days": ["saturday"],
+      "time": "07:05",
+      "description": "Weekly profit recap (Mon-Fri) + weekend rest message"
+    }
+  }
+}
