@@ -1,46 +1,66 @@
 {
   "rules": {
     "users": {
-      ".read": "auth != null && (root.child('users/' + auth.uid + '/role').val() === 'super_admin' || root.child('users/' + auth.uid + '/role').val() === 'admin')",
+      ".read": "auth != null",
       "$uid": {
-        ".read": "auth != null && auth.uid === $uid",
-        ".write": "auth != null && root.child('users/' + auth.uid + '/role').val() === 'super_admin'"
+        ".read": "auth != null && (auth.uid === $uid || root.child('users/' + auth.uid + '/role').val() === 'super_admin' || root.child('users/' + auth.uid + '/role').val() === 'admin')",
+        ".write": "auth != null && (auth.uid === $uid || root.child('users/' + auth.uid + '/role').val() === 'super_admin')",
+        "subscriptions": {
+          ".read": "auth != null",
+          "$vpsKey": {
+            ".read": "auth != null",
+            ".write": "auth != null && (root.child('users/' + auth.uid + '/role').val() === 'super_admin' || root.child('users/' + auth.uid + '/role').val() === 'admin')",
+            "accounts": {
+              "$accNum": {
+                ".read": "auth != null",
+                ".write": "auth != null && (root.child('users/' + auth.uid + '/role').val() === 'super_admin' || root.child('users/' + auth.uid + '/role').val() === 'admin')"
+              }
+            }
+          }
+        }
       }
     },
-    
-    // 🟢 TAMBAHAN BARU: ATURAN UNTUK NODE GRUP
-    "groups": {
-      // Super Admin & Admin boleh membaca daftar grup
-      ".read": "auth != null && (root.child('users/' + auth.uid + '/role').val() === 'super_admin' || root.child('users/' + auth.uid + '/role').val() === 'admin')",
-      // HANYA Super Admin yang boleh membuat/menghapus grup
-      ".write": "auth != null && root.child('users/' + auth.uid + '/role').val() === 'super_admin'"
-    },
-
-"account_data": {
-      // READ GLOBAL: Hanya Super Admin
-      ".read": "auth != null && root.child('users/' + auth.uid + '/role').val() === 'super_admin'",
-      
-      "$account_id": {
-        // READ SPESIFIK: Hanya Admin Grup atau Investor Pemilik Akun
-        ".read": "auth != null && (root.child('users/' + auth.uid + '/owned_accounts/' + $account_id).val() === true || root.child('users/' + auth.uid + '/role').val() === 'admin')",
-        
-        // 🟢 FIX: BUKA JALUR WRITE UNTUK EA MT5
-        // Kita izinkan penulisan (write: true) agar WebRequest dari VPS tidak diblokir.
-        ".write": true
+    "account_data": {
+      ".read": "auth != null && (root.child('users/' + auth.uid + '/role').val() === 'super_admin' || root.child('users/' + auth.uid + '/role').val() === 'admin' || root.child('users/' + auth.uid + '/role').val() === 'investor')",
+      "$accountId": {
+        ".read": "auth != null",
+        ".write": true,
+        "daily_history": {
+          ".read": "auth != null",
+          ".write": true,
+          "$date": {
+            "daily_profit": { ".validate": "newData.isNumber()" },
+            "daily_growth_percent": { ".validate": "newData.isNumber()" },
+            "daily_lots": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+            "lot_volume": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+            "percentage_growth": { ".validate": "newData.isNumber()" },
+            "nominal_profit": { ".validate": "newData.isNumber()" }
+          }
+        },
+        "metadata": {
+          ".read": "auth != null",
+          ".write": true
+        }
       }
     },
     "licenses": {
       "$account": {
         ".read": "auth != null || true",
         ".write": "auth != null",
-        "license_key": { ".validate": "newData.isString() && newData.val().matches(/^KRX-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/)" },
-        "membership_type": { ".validate": "newData.isString() && (newData.val() === 'TRIAL' || newData.val() === 'MONTHLY' || newData.val() === '3MONTHS')" },
+        "license_key": {
+          ".validate": "newData.isString() && newData.val().matches(/^KRX-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/)"
+        },
+        "membership_type": {
+          ".validate": "newData.isString() && (newData.val() === 'TRIAL' || newData.val() === 'MONTHLY' || newData.val() === '3MONTHS')"
+        },
         "is_ib": { ".validate": "newData.isBoolean()" },
         "price_paid": { ".validate": "newData.isNumber() && newData.val() >= 0" },
         "broker_server": { ".validate": "newData.isString() && newData.val().length > 0" },
         "generated_at": { ".validate": "newData.isNumber()" },
         "expiry_date": { ".validate": "newData.isNumber()" },
-        "status": { ".validate": "newData.isString() && (newData.val() === 'ACTIVE' || newData.val() === 'EXPIRED' || newData.val() === 'SUSPENDED')" },
+        "status": {
+          ".validate": "newData.isString() && (newData.val() === 'ACTIVE' || newData.val() === 'EXPIRED' || newData.val() === 'SUSPENDED')"
+        },
         "vps_rental": { ".validate": "newData.isBoolean()" },
         "vps_deposit_paid": { ".validate": "newData.isBoolean()" },
         "vps_remaining": { ".validate": "newData.isNumber()" },
@@ -57,6 +77,10 @@
         }
       }
     },
+    "groups": {
+      ".read": "auth != null && (root.child('users/' + auth.uid + '/role').val() === 'super_admin' || root.child('users/' + auth.uid + '/role').val() === 'admin')",
+      ".write": "auth != null && root.child('users/' + auth.uid + '/role').val() === 'super_admin'"
+    },
     "trial_used_accounts": {
       "$account": {
         ".read": "auth != null",
@@ -71,6 +95,108 @@
         "message": { ".validate": "newData.isString()" },
         "timestamp": { ".validate": "newData.isNumber()" },
         "type": { ".validate": "newData.isString()" }
+      }
+    },
+    "onboarding_requests": {
+      ".read": "auth != null && (root.child('users/' + auth.uid + '/role').val() === 'super_admin' || root.child('users/' + auth.uid + '/role').val() === 'admin')",
+      ".write": true,
+      "$request_id": {
+        "name": { ".validate": "newData.isString() && newData.val().length > 0" },
+        "email": { ".validate": "newData.isString() && newData.val().contains('@')" },
+        "telegram_id": { ".validate": "newData.isString() && newData.val().length > 0" },
+        "status": {
+          ".validate": "newData.isString() && newData.val() === 'pending_setup'"
+        },
+        "created_at": { ".validate": "newData.isNumber()" }
+      }
+    },
+    "invoices": {
+      ".read": "auth != null",
+      ".write": true,
+      "$invoice_id": {
+        "type": {
+          ".validate": "newData.isString() && (newData.val() === 'vps' || newData.val() === 'vps_rental' || newData.val() === 'profit_share')"
+        },
+        "account_number": { ".validate": "newData.isString()" },
+        "accountNumber": { ".validate": "newData.isString()" },
+        "user_id": { ".validate": "newData.isString()" },
+        "uid": { ".validate": "newData.isString()" },
+        "user_name": { ".validate": "newData.isString()" },
+        "telegram_id": { ".validate": "newData.isString()" },
+        "vps_key": { ".validate": "newData.isString()" },
+        "amount": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+        "status": {
+          ".validate": "newData.isString() && (newData.val() === 'pending' || newData.val() === 'warning' || newData.val() === 'urgent' || newData.val() === 'paid' || newData.val() === 'overdue' || newData.val() === 'cancelled')"
+        },
+        "description": { ".validate": "newData.isString()" },
+        "due_date": { ".validate": "newData.isString()" },
+        "billing_cycle_date": { ".validate": "newData.isString()" },
+        "period_start": { ".validate": "newData.isString()" },
+        "period_end": { ".validate": "newData.isString()" },
+        "total_profit": { ".validate": "newData.isNumber()" },
+        "share_percentage": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100" },
+        "paid_at": { ".validate": "newData.isString()" },
+        "created_at": { ".validate": "newData.isString()" }
+      }
+    },
+    "system_triggers": {
+      ".read": "auth != null",
+      ".write": true,
+      "$trigger_name": {
+        "fired": { ".validate": "newData.isBoolean()" },
+        "timestamp": { ".validate": "newData.isNumber()" },
+        "gmt8_time": { ".validate": "newData.isString()" },
+        "trigger_name": { ".validate": "newData.isString()" },
+        "payload": {
+          "user_id": { ".validate": "newData.isString()" },
+          "vps_key": { ".validate": "newData.isString()" },
+          "vps_name": { ".validate": "newData.isString()" },
+          "amount": { ".validate": "newData.isNumber()" },
+          "due_date": { ".validate": "newData.isString()" },
+          "days_remaining": { ".validate": "newData.isNumber()" },
+          "invoice_id": { ".validate": "newData.isString()" },
+          "invoices_generated": { ".validate": "newData.isNumber()" },
+          "period": { ".validate": "newData.isString()" }
+        }
+      }
+    },
+    "cron_heartbeat": {
+      ".read": "auth != null",
+      ".write": true,
+      "last_ping": { ".validate": "newData.isNumber()" },
+      "gmt8_time": { ".validate": "newData.isString()" },
+      "status": { ".validate": "newData.isString()" },
+      "timezone": { ".validate": "newData.isString()" }
+    },
+    "profit_sharing_config": {
+      ".read": "auth != null",
+      ".write": "auth != null && root.child('users/' + auth.uid + '/role').val() === 'super_admin'",
+      "$account": {
+        "percentage": {
+          ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100"
+        },
+        "updated_at": { ".validate": "newData.isNumber()" }
+      }
+    },
+    "billing_config": {
+      ".read": "auth != null",
+      ".write": "auth != null && root.child('users/' + auth.uid + '/role').val() === 'super_admin'",
+      "vps_monthly_rate": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+      "billing_cycle_date": {
+        ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 28"
+      }
+    },
+    "subscription_data": {
+      ".read": "auth != null",
+      ".write": "auth != null && root.child('users/' + auth.uid + '/role').val() === 'super_admin'",
+      "$user_id": {
+        "vps_subscriptions": {
+          "$vps_id": {
+            "account_number": { ".validate": "newData.isString()" },
+            "billing_cycle_date": { ".validate": "newData.isString()" },
+            "status": { ".validate": "newData.isString()" }
+          }
+        }
       }
     }
   }

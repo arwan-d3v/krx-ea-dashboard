@@ -6,7 +6,7 @@ import { useState, useEffect } from "react";
 import { 
     LayoutDashboard, BarChart, Key, ShieldCheck, 
     AlertCircle, UserPlus, Cpu, LogOut, Sun, Moon, Menu, X, Globe,
-    Folders, Clock // Ikon baru untuk Group Manager & Cron Manager
+    Folders, Clock, CreditCard // Ikon baru untuk Group Manager, Cron Manager & Subscription
 } from "lucide-react";
 
 import { useAuth } from "../app/context/AuthContext";
@@ -24,8 +24,9 @@ const navDict = {
     manager: "Manager",
     approval: "Approval",
     users: "Users",
-    groups: "Groups", // Tambahan label baru
+    groups: "Groups",
     ea_control: "EA Control",
+    subscription: "Subscription",
     logout: "Logout",
     logout_confirm: "Are you sure you want to exit?",
     sys_title: "MONITORING SYSTEM"
@@ -37,8 +38,9 @@ const navDict = {
     manager: "Pengelola",
     approval: "Persetujuan",
     users: "Pengguna",
-    groups: "Kelompok", // Tambahan label baru
+    groups: "Kelompok",
     ea_control: "Kontrol EA",
+    subscription: "Langganan",
     logout: "Keluar",
     logout_confirm: "Apakah Anda yakin ingin keluar?",
     sys_title: "SISTEM MONITORING"
@@ -102,6 +104,22 @@ export default function AppNavbar() {
       );
     }
 
+    if (role === "investor") {
+      items.push(
+        { type: "divider" },
+        { href: "/subscription-area", icon: <CreditCard size={18} />, label: t.subscription, color: "purple" }
+      );
+    }
+
+    if (role === "admin") {
+      items.push(
+        { type: "divider" },
+        { href: "/group-manager", icon: <Folders size={18} />, label: t.groups, color: "purple" },
+        { href: "/ea-manager", icon: <Cpu size={18} />, label: t.ea_control, color: "blue" },
+        { href: "/subscription-area", icon: <CreditCard size={18} />, label: t.subscription, color: "purple" }
+      );
+    }
+
     if (role === "super_admin") {
       items.push(
         { type: "divider" },
@@ -109,7 +127,8 @@ export default function AppNavbar() {
         { href: "/approval-center", icon: <AlertCircle size={18} />, label: t.approval, color: "orange" },
         { href: "/user-management", icon: <UserPlus size={18} />, label: t.users, color: "green" },
         { href: "/ea-manager", icon: <Cpu size={18} />, label: t.ea_control, color: "blue" },
-        { href: "/cron-manager", icon: <Clock size={18} />, label: "Cron Manager", color: "cyan" }
+        { href: "/cron-manager", icon: <Clock size={18} />, label: "Cron Manager", color: "cyan" },
+        { href: "/subscription-area", icon: <CreditCard size={18} />, label: t.subscription, color: "purple" }
       );
     }
     return items;

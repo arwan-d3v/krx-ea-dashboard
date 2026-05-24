@@ -52,6 +52,7 @@ export default function SystemTriggerListener() {
               trigger: triggerName,
               timestamp: triggerData.timestamp,
               gmt8_time: triggerData.gmt8_time,
+              payload: triggerData.payload || null,
             }),
           });
 

@@ -1,0 +1,76 @@
+[
+  {
+    "email": "investor1@example.com",
+    "fullName": "John Doe",
+    "subscriptions": [
+      {
+        "vps_name": "KRX-VPS-01",
+        "vps_monthly_cost": 25,
+        "billing_cycle_date": "2026-06-01",
+        "next_billing_date": "2026-06-01",
+        "status": "active",
+        "accounts": [
+          {
+            "account_number": "12345678",
+            "profit_share_percent": 30,
+            "bot_start_date": "2026-05-01",
+            "last_invoiced_date": null
+          },
+          {
+            "account_number": "87654321",
+            "profit_share_percent": 25,
+            "bot_start_date": "2026-05-15",
+            "last_invoiced_date": null
+          }
+        ]
+      },
+      {
+        "vps_name": "KRX-VPS-02",
+        "vps_monthly_cost": 40,
+        "billing_cycle_date": "2026-06-15",
+        "next_billing_date": "2026-06-15",
+        "status": "active",
+        "accounts": [
+          {
+            "account_number": "11223344",
+            "profit_share_percent": 35,
+            "bot_start_date": "2026-04-20",
+            "last_invoiced_date": "2026-05-10"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "email": "investor2@example.com",
+    "fullName": "Jane Smith",
+    "subscriptions": [
+      {
+        "vps_name": "KRX-VPS-03",
+        "vps_monthly_cost": 30,
+        "billing_cycle_date": "2026-06-10",
+        "status": "active",
+        "accounts": [
+          {
+            "account_number": "55667788",
+            "profit_share_percent": 30,
+            "bot_start_date": "2026-05-20"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "email": "investor3@example.com",
+    "fullName": "Bob Wilson",
+    "subscriptions": [
+      {
+        "vps_name": "KRX-VPS-04",
+        "vps_monthly_cost": 20,
+        "billing_cycle_date": "2026-07-01",
+        "status": "active",
+        "accounts": []
+      }
+    ]
+  }
+]

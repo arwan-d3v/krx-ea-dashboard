@@ -1,259 +1,416 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { auth, db } from "../../lib/firebase";
-import { ref, set } from "firebase/database";
-import { useRouter } from "next/navigation";
-import { useAuth } from "../context/AuthContext";
-import { 
-  User, Phone, Send, Lock, Server, ShieldCheck, 
-  Eye, EyeOff, Loader2, ArrowRight, ArrowLeft 
+import {
+  User,
+  Mail,
+  MessageCircle,
+  ArrowRight,
+  Shield,
+  AlertCircle,
+  Check,
+  Loader2,
+  Terminal,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { auth, db } from "../../lib/firebase";
+import { ref, get, set, serverTimestamp } from "firebase/database";
+import { onAuthStateChanged } from "firebase/auth";
+import { toast } from "sonner";
+
+// ============================================================================
+// ONBOARDING PAGE - User wajib input Nama, Email, & ID Telegram
+// Redirect dari halaman login bila user status "pending_setup"
+// ============================================================================
+
+const MIN_TELEGRAM_ID_LENGTH = 6;
 
 export default function OnboardingPage() {
-  const { user, role, loading: isAuthLoading } = useAuth();
   const router = useRouter();
 
-  const [step, setStep] = useState(1);
-  const [showPassword, setShowPassword] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  // User data dari Firebase Auth
+  const [authUser, setAuthUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
 
-  // Form Fields State
-  const [form, setForm] = useState({
+  // Form state
+  const [formData, setFormData] = useState({
     fullName: "",
-    whatsapp: "",
-    telegram: "",
-    mt5Account: "",
-    broker: "Exness",
-    server: "",
-    masterPassword: "",
-    agreement: false
+    email: "",
+    telegramId: "",
   });
+  const [errors, setErrors] = useState({});
+  const [submitting, setSubmitting] = useState(false);
+  const [step, setStep] = useState("form"); // 'form' | 'success'
 
-  // Guard: Jika tidak login, tendang ke login area
+  // ── Check Auth State ──
   useEffect(() => {
-    if (!isAuthLoading && !user) router.push("/login");
-  }, [user, isAuthLoading, router]);
+    const unsub = onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        router.push("/login");
+        return;
+      }
+      setAuthUser(user);
 
-  if (isAuthLoading || !user) {
-    return <div className="flex h-screen items-center justify-center bg-[#030712] font-mono text-blue-500 animate-pulse text-xs tracking-widest uppercase">Securing Session Matrix...</div>;
-  }
+      // Pre-fill email from auth
+      setFormData((prev) => ({
+        ...prev,
+        email: user.email || "",
+      }));
 
-  const nextStep = () => setStep(prev => prev + 1);
-  const prevStep = () => setStep(prev => prev - 1);
+      // Check existing user data in Firebase
+      try {
+        const userRef = ref(db, `users/${user.uid}`);
+        const snap = await get(userRef);
+        if (snap.exists()) {
+          const userData = snap.val();
+          // If already set up, redirect to dashboard
+          if (userData.setup_status === "completed" && userData.fullName) {
+            router.push("/dashboard");
+            return;
+          }
+          // Pre-fill existing data
+          setFormData((prev) => ({
+            ...prev,
+            fullName: userData.fullName || "",
+            email: userData.email || user.email || "",
+            telegramId: userData.telegramId || "",
+          }));
+        }
+      } catch (err) {
+        console.error("Error checking user data:", err);
+      }
 
-  // LOGIKA SUBMIT DATA & BOT TRIGGER
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!form.agreement) return alert("Anda wajib menyetujui Terms & Conditions!");
-    setIsSubmitting(true);
+      setAuthLoading(false);
+    });
 
-    try {
-      // 1. Simpan profil investor dan paksa role menjadi 'investor'
-      await set(ref(db, `users/${user.uid}`), {
-        email: user.email,
-        role: "investor",
-        name: form.fullName,
-        whatsapp: form.whatsapp,
-        telegram: form.telegram || "-",
-        onboarding_submitted: true,
-        createdAt: new Date().toISOString()
+    return () => unsub();
+  }, [router]);
+
+  // ── Validation ──
+  const validate = () => {
+    const newErrors = {};
+
+    if (!formData.fullName.trim()) {
+      newErrors.fullName = "Full name is required";
+    } else if (formData.fullName.trim().length < 2) {
+      newErrors.fullName = "Name must be at least 2 characters";
+    }
+
+    if (!formData.email.trim()) {
+      newErrors.email = "Email is required";
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      newErrors.email = "Please enter a valid email address";
+    }
+
+    if (!formData.telegramId.trim()) {
+      newErrors.telegramId = "Telegram ID is required";
+    } else if (formData.telegramId.trim().length < MIN_TELEGRAM_ID_LENGTH) {
+      newErrors.telegramId = `Telegram ID seems too short (min ${MIN_TELEGRAM_ID_LENGTH} chars)`;
+    } else {
+      const tid = formData.telegramId.trim();
+      const isUsername = tid.startsWith("@");
+      const isNumeric = /^\d+$/.test(tid);
+      // Accept @username format or numeric ID
+      if (!isUsername && !isNumeric) {
+        newErrors.telegramId = "Use @username format or numeric Telegram ID only";
+      } else if (isUsername && tid.length < 4) {
+        newErrors.telegramId = "Username too short (min 3 chars after @)";
+      } else if (isNumeric && (tid.length < 6 || tid.length > 15)) {
+        newErrors.telegramId = "Numeric Telegram ID should be 6-15 digits";
+      }
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  // ── Handle Input Tab (auto-focus next field) ──
+  const handleChange = (field) => (e) => {
+    setFormData((prev) => ({ ...prev, [field]: e.target.value }));
+    // Clear error for this field on change
+    if (errors[field]) {
+      setErrors((prev) => {
+        const copy = { ...prev };
+        delete copy[field];
+        return copy;
       });
-
-      // 2. Kirim data akun ke antrean persetujuan (approval queue) untuk tim KRX
-      await set(ref(db, `approval_queue/${form.mt5Account}`), {
-        uid: user.uid,
-        email: user.email,
-        name: form.fullName,
-        broker: form.broker,
-        server: form.server,
-        masterPassword: form.masterPassword,
-        submittedAt: new Date().toISOString()
-      });
-
-      // 3. 🚀 TEMBAK NOTIFIKASI TELEGRAM VIA NEXT.JS API CENTRAL
-      await fetch('/api/notify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: `🚨 <b>NEW INVESTOR ONBOARDING DONE</b>\n\n👤 <b>Klien:</b> ${form.fullName}\n📧 <b>Email:</b> ${user.email}\n📞 <b>WhatsApp:</b> ${form.whatsapp}\n✈️ <b>Telegram:</b> @${form.telegram || '-'}\n━━━━━━━━━━━━━━━━━━\n💳 <b>Akun MT5:</b> <code>${form.mt5Account}</code>\n🏦 <b>Broker:</b> ${form.broker}\n🖥️ <b>Server:</b> <code>${form.server}</code>\n\n⚠️ Klien sedang berada di ruang tunggu. Segera cek <b>Approval Center</b> untuk aktivasi VPS dan Node EA! ⚡`
-        })
-      });
-
-      // 4. Sukses, bawa ke dashboard (klien akan otomatis melihat status pending)
-      router.push("/dashboard");
-
-    } catch (error) {
-      console.error(error);
-      alert("Terjadi kesalahan sistem saat mendaftar. Hubungi admin.");
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
-  return (
-    <div className="min-h-screen bg-[#030712] flex items-center justify-center p-4 font-sans relative text-white">
-      
-      {/* Background Matrix Effect */}
-      <div className="absolute inset-0 z-0 opacity-10 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:20px_20px] pointer-events-none"></div>
+  // ── Submit ──
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!validate()) return;
 
-      <div className="relative z-10 w-full max-w-lg bg-[#0a0a0a] border border-white/10 rounded-3xl p-6 md:p-8 shadow-[0_0_60px_rgba(147,51,234,0.08)]">
-        
-        {/* Progress Tracker */}
-        <div className="flex items-center justify-between mb-8 pb-4 border-b border-white/5 font-mono text-[10px] tracking-widest text-slate-500 uppercase font-bold">
-          <span className={step === 1 ? "text-purple-500" : "text-green-500"}>01. CONTACTS</span>
-          <div className={`h-px flex-grow mx-4 ${step > 1 ? 'bg-green-500/30' : 'bg-white/10'}`}></div>
-          <span className={step === 2 ? "text-purple-500" : step > 2 ? "text-green-500" : ""}>02. METATRADER 5</span>
-          <div className={`h-px flex-grow mx-4 ${step > 2 ? 'bg-green-500/30' : 'bg-white/10'}`}></div>
-          <span className={step === 3 ? "text-purple-500" : ""}>03. VERIFY</span>
+    if (!authUser) {
+      toast.error("Session expired. Please login again.");
+      router.push("/login");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const userRef = ref(db, `users/${authUser.uid}`);
+      const snap = await get(userRef);
+      const existingData = snap.exists() ? snap.val() : {};
+
+      const onboardingData = {
+        uid: authUser.uid,
+        fullName: formData.fullName.trim(),
+        email: formData.email.trim(),
+        telegramId: formData.telegramId.trim(),
+        setup_status: "pending_setup", // Setelah isi form, status menunggu approval admin
+        role: existingData.role || "investor",
+        onboarded_at: serverTimestamp(),
+      };
+
+      await set(userRef, {
+        ...existingData,
+        ...onboardingData,
+      });
+
+      setStep("success");
+      toast.success("Setup submitted! Waiting for admin approval.", {
+        duration: 5000,
+      });
+    } catch (error) {
+      console.error("Onboarding error:", error);
+      toast.error("Failed to save your data. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // ── Loading State ──
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[var(--background)]">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 rounded-full bg-blue-600/20 flex items-center justify-center animate-pulse">
+            <Loader2 size={24} className="text-blue-400 animate-spin" />
+          </div>
+          <p className="text-[var(--muted-foreground)] text-sm">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-[var(--background)] p-4 relative overflow-hidden">
+      {/* Background Decoration */}
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-600/5 rounded-full blur-3xl" />
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-indigo-600/5 rounded-full blur-3xl" />
+      </div>
+
+      {/* Grid Lines Decoration */}
+      <div
+        className="absolute inset-0 opacity-[0.03] pointer-events-none"
+        style={{
+          backgroundImage:
+            "linear-gradient(rgba(59,130,246,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(59,130,246,0.5) 1px, transparent 1px)",
+          backgroundSize: "60px 60px",
+        }}
+      />
+
+      <div className="relative z-10 w-full max-w-lg">
+        {/* Logo & Header */}
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl shadow-lg shadow-blue-600/25 mb-4 ring-1 ring-blue-400/30">
+            <Terminal size={32} className="text-white" />
+          </div>
+          <h1 className="text-2xl font-black tracking-tight text-[var(--foreground)]">
+            KRX EA DASHBOARD
+          </h1>
+          <p className="text-sm text-[var(--muted-foreground)] mt-2">
+            Complete your account setup to continue
+          </p>
         </div>
 
-        {/* STEP 1: CONTACT INFO */}
-        {step === 1 && (
-          <div className="space-y-5 animate-in fade-in slide-in-from-right-4 duration-300">
-            <div>
-              <h2 className="text-xl font-black tracking-tight uppercase">Informasi Kontak Anda</h2>
-              <p className="text-xs text-slate-500 mt-1">Guna pengiriman bot notifikasi harian langsung ke saku Anda.</p>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Nama Lengkap</label>
-              <div className="relative">
-                <User className="absolute left-4 top-3.5 text-slate-500" size={16} />
-                <input type="text" required value={form.fullName} onChange={e => setForm({...form, fullName: e.target.value})} className="w-full bg-black border border-white/10 rounded-xl pl-11 pr-4 py-3 text-sm outline-none focus:border-purple-500 transition-all" placeholder="Sesuai nama rekening/identitas"/>
+        {step === "form" ? (
+          <>
+            {/* Status Banner */}
+            <div className="mb-6 p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-start gap-3">
+              <Shield size={18} className="text-amber-400 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-amber-300 font-semibold text-sm">
+                  Account Setup Required
+                </p>
+                <p className="text-amber-400/80 text-xs mt-0.5">
+                  Your account needs admin approval after setup. Fill in all
+                  fields below.
+                </p>
               </div>
             </div>
 
-            <div className="space-y-1.5">
-              <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Nomor WhatsApp (Aktif)</label>
-              <div className="relative">
-                <Phone className="absolute left-4 top-3.5 text-slate-500" size={16} />
-                <input type="tel" required value={form.whatsapp} onChange={e => setForm({...form, whatsapp: e.target.value})} className="w-full bg-black border border-white/10 rounded-xl pl-11 pr-4 py-3 text-sm outline-none focus:border-purple-500 transition-all" placeholder="Contoh: +62812345678"/>
+            {/* Onboarding Form */}
+            <form
+              onSubmit={handleSubmit}
+              className="bg-[var(--card-bg)] border border-[var(--card-border)] rounded-2xl p-6 space-y-5 shadow-2xl"
+            >
+              {/* Full Name */}
+              <div>
+                <label className="block text-xs font-semibold text-[var(--muted-foreground)] mb-1.5 uppercase tracking-wider">
+                  Full Name
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <User size={16} className="text-slate-500" />
+                  </div>
+                  <input
+                    type="text"
+                    value={formData.fullName}
+                    onChange={handleChange("fullName")}
+                    placeholder="e.g. John Doe"
+                    autoFocus
+                    className={`w-full pl-10 pr-3 py-2.5 bg-[var(--muted)]/50 border rounded-xl text-sm text-[var(--foreground)] placeholder:text-slate-600 outline-none transition-all focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30 ${
+                      errors.fullName
+                        ? "border-red-500/50 focus:border-red-500 focus:ring-red-500/30"
+                        : "border-[var(--card-border)]"
+                    }`}
+                  />
+                </div>
+                {errors.fullName && (
+                  <p className="mt-1 text-xs text-red-400 flex items-center gap-1">
+                    <AlertCircle size={12} /> {errors.fullName}
+                  </p>
+                )}
+              </div>
+
+              {/* Email */}
+              <div>
+                <label className="block text-xs font-semibold text-[var(--muted-foreground)] mb-1.5 uppercase tracking-wider">
+                  Email Address
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Mail size={16} className="text-slate-500" />
+                  </div>
+                  <input
+                    type="email"
+                    value={formData.email}
+                    onChange={handleChange("email")}
+                    placeholder="you@example.com"
+                    className={`w-full pl-10 pr-3 py-2.5 bg-[var(--muted)]/50 border rounded-xl text-sm text-[var(--foreground)] placeholder:text-slate-600 outline-none transition-all focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30 ${
+                      errors.email
+                        ? "border-red-500/50 focus:border-red-500 focus:ring-red-500/30"
+                        : "border-[var(--card-border)]"
+                    }`}
+                  />
+                </div>
+                {errors.email && (
+                  <p className="mt-1 text-xs text-red-400 flex items-center gap-1">
+                    <AlertCircle size={12} /> {errors.email}
+                  </p>
+                )}
+              </div>
+
+              {/* Telegram ID */}
+              <div>
+                <label className="block text-xs font-semibold text-[var(--muted-foreground)] mb-1.5 uppercase tracking-wider">
+                  Telegram ID / Username
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <MessageCircle size={16} className="text-slate-500" />
+                  </div>
+                  <input
+                    type="text"
+                    value={formData.telegramId}
+                    onChange={handleChange("telegramId")}
+                    placeholder="e.g. @johndoe or 123456789"
+                    className={`w-full pl-10 pr-3 py-2.5 bg-[var(--muted)]/50 border rounded-xl text-sm text-[var(--foreground)] placeholder:text-slate-600 outline-none transition-all focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30 ${
+                      errors.telegramId
+                        ? "border-red-500/50 focus:border-red-500 focus:ring-red-500/30"
+                        : "border-[var(--card-border)]"
+                    }`}
+                  />
+                </div>
+                {errors.telegramId && (
+                  <p className="mt-1 text-xs text-red-400 flex items-center gap-1">
+                    <AlertCircle size={12} /> {errors.telegramId}
+                  </p>
+                )}
+                <p className="mt-1 text-[10px] text-slate-600">
+                  Used for all billing notifications & urgent alerts
+                </p>
+              </div>
+
+              {/* Submit Button */}
+              <button
+                type="submit"
+                disabled={submitting}
+                className="w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-sm rounded-xl transition-all disabled:opacity-60 disabled:cursor-not-allowed shadow-lg shadow-blue-600/25"
+              >
+                {submitting ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    Complete Setup
+                    <ArrowRight size={16} />
+                  </>
+                )}
+              </button>
+            </form>
+
+            {/* Footer */}
+            <p className="text-center text-[10px] text-slate-600 mt-4">
+              Managed by KRX Quantitative • All data is encrypted and secure
+            </p>
+          </>
+        ) : (
+          /* ── Success State ── */
+          <div className="bg-[var(--card-bg)] border border-[var(--card-border)] rounded-2xl p-8 shadow-2xl text-center">
+            <div className="inline-flex items-center justify-center w-20 h-20 bg-green-500/10 border border-green-500/30 rounded-full mb-4">
+              <Check size={36} className="text-green-400" />
+            </div>
+            <h2 className="text-xl font-black text-[var(--foreground)] mb-2">
+              Setup Submitted!
+            </h2>
+            <p className="text-sm text-[var(--muted-foreground)] leading-relaxed">
+              Your profile has been saved. An admin will review your account
+              shortly. You'll be notified once your account is activated.
+            </p>
+            <div className="mt-6 p-4 bg-blue-600/5 border border-blue-600/20 rounded-xl text-left">
+              <p className="text-xs text-blue-400 font-semibold mb-2">
+                YOUR INFO:
+              </p>
+              <div className="space-y-1.5 text-xs text-[var(--muted-foreground)]">
+                <p>
+                  <span className="text-slate-600">Name:</span>{" "}
+                  <span className="text-[var(--foreground)]">
+                    {formData.fullName}
+                  </span>
+                </p>
+                <p>
+                  <span className="text-slate-600">Email:</span>{" "}
+                  <span className="text-[var(--foreground)]">
+                    {formData.email}
+                  </span>
+                </p>
+                <p>
+                  <span className="text-slate-600">Telegram:</span>{" "}
+                  <span className="text-[var(--foreground)]">
+                    {formData.telegramId}
+                  </span>
+                </p>
+                <p>
+                  <span className="text-slate-600">Status:</span>{" "}
+                  <span className="text-amber-400">Pending Admin Approval</span>
+                </p>
               </div>
             </div>
-
-            <div className="space-y-1.5">
-              <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Username Telegram (Opsional)</label>
-              <div className="relative">
-                <Send className="absolute left-4 top-3.5 text-slate-500" size={16} />
-                <input type="text" value={form.telegram} onChange={e => setForm({...form, telegram: e.target.value})} className="w-full bg-black border border-white/10 rounded-xl pl-11 pr-4 py-3 text-sm outline-none focus:border-purple-500 transition-all" placeholder="Tanpa simbol @ (Contoh: kiroix)"/>
-              </div>
-            </div>
-
-            <button type="button" onClick={nextStep} disabled={!form.fullName || !form.whatsapp} className="w-full bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white font-black text-xs tracking-widest uppercase rounded-xl py-3.5 mt-6 flex items-center justify-center gap-2 transition-all">
-              LANJUT DETAIL AKUN <ArrowRight size={14}/>
+            <button
+              onClick={() => router.push("/dashboard")}
+              className="mt-6 w-full py-3 bg-[var(--muted)] hover:bg-[var(--muted)]/70 text-sm font-semibold text-[var(--foreground)] rounded-xl transition-all"
+            >
+              Go to Dashboard (Limited Access)
             </button>
           </div>
         )}
-
-        {/* STEP 2: METATRADER 5 KREDENSIAL */}
-        {step === 2 && (
-          <div className="space-y-5 animate-in fade-in slide-in-from-right-4 duration-300">
-            <div>
-              <h2 className="text-xl font-black tracking-tight uppercase">Kredensial Terminal MT5</h2>
-              <p className="text-xs text-slate-500 mt-1">Masukkan data akun trading Anda agar tim KRX dapat menyetel VPS.</p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Pilih Broker</label>
-                <select value={form.broker} onChange={e => setForm({...form, broker: e.target.value})} className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-sm outline-none cursor-pointer focus:border-purple-500">
-                  <option value="Exness">Exness</option>
-                  <option value="XM">XM Global</option>
-                  <option value="OctaFX">OctaFX</option>
-                  <option value="FBS">FBS Server</option>
-                </select>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Nomor Akun MT5</label>
-                <div className="relative">
-                  <User className="absolute left-4 top-3.5 text-slate-500" size={16} />
-                  <input type="number" required value={form.mt5Account} onChange={e => setForm({...form, mt5Account: e.target.value})} className="w-full bg-black border border-white/10 rounded-xl pl-11 pr-4 py-3 text-sm outline-none focus:border-purple-500 transition-all" placeholder="Login ID"/>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Server Broker (Sangat Wajib Presisi)</label>
-              <div className="relative">
-                <Server className="absolute left-4 top-3.5 text-slate-500" size={16} />
-                <input type="text" required value={form.server} onChange={e => setForm({...form, server: e.target.value})} className="w-full bg-black border border-white/10 rounded-xl pl-11 pr-4 py-3 text-sm outline-none focus:border-purple-500 transition-all" placeholder="Contoh: Exness-MT5Real37"/>
-              </div>
-            </div>
-
-            <div className="space-y-1.5 relative">
-              <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Master Password</label>
-              <div className="relative">
-                <Lock className="absolute left-4 top-3.5 text-slate-500" size={16} />
-                <input type={showPassword ? "text" : "password"} required value={form.masterPassword} onChange={e => setForm({...form, masterPassword: e.target.value})} className="w-full bg-black border border-white/10 rounded-xl pl-11 pr-12 py-3 text-sm outline-none focus:border-purple-500 transition-all" placeholder="Password Utama Akun Trading"/>
-                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-3.5 text-slate-500 hover:text-white transition-colors">
-                  {showPassword ? <EyeOff size={16}/> : <Eye size={16}/>}
-                </button>
-              </div>
-              
-              {/* BOX DISCLAIMER SECURITY */}
-              <div className="mt-2 p-3 bg-amber-500/5 border border-amber-500/20 rounded-xl text-[10px] text-amber-400 leading-relaxed font-medium">
-                🛡️ <b>SECURITY NOTICE:</b> Master Password dikirim dan dienkripsi murni agar server VPS kuantitatif tim KRX dapat mengeksekusi order perdagangan. Tim KRX <b>TIDAK MEMILIKI AKSES</b> untuk menarik dana (Withdrawal) Anda, karena penarikan dana mutlak hanya bisa diproses lewat dashboard website broker pribadi Anda.
-              </div>
-            </div>
-
-            <div className="flex gap-4 mt-6">
-              <button type="button" onClick={prevStep} className="px-4 bg-white/5 hover:bg-white/10 text-white rounded-xl border border-white/10 transition-all flex items-center justify-center"><ArrowLeft size={16}/></button>
-              <button type="button" onClick={nextStep} disabled={!form.mt5Account || !form.server || !form.masterPassword} className="w-full bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white font-black text-xs tracking-widest uppercase rounded-xl py-3.5 flex items-center justify-center gap-2 transition-all">
-                TINJAU LEGALITAS <ArrowRight size={14}/>
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* STEP 3: FINAL VERIFICATION & LEGAL T&C */}
-        {step === 3 && (
-          <form onSubmit={handleSubmit} className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-            <div>
-              <h2 className="text-xl font-black tracking-tight uppercase">Pernyataan & Persetujuan</h2>
-              <p className="text-xs text-slate-500 mt-1">Langkah akhir perlindungan hukum dan aktivasi sistem.</p>
-            </div>
-
-            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-3 text-xs text-slate-400 max-h-48 overflow-y-auto custom-scrollbar font-medium leading-relaxed">
-              <p className="font-bold text-white uppercase tracking-wider text-[10px] text-purple-400">KRX RISK DISCLAIMER & COMPLIANCE</p>
-              <p>1. Perdagangan aset finansial instrumen komoditas (XAUUSD) memiliki risiko tinggi dan berpotensi menghilangkan sebagian atau seluruh modal investasi Anda.</p>
-              <p>2. Penggunaan algoritma kuantitatif KRX adalah bentuk kesepakatan hosting terpusat di mana pengelolaan kualitas eksekusi bot diatur sepenuhnya oleh tim KRX.</p>
-              <p>3. Hasil kinerja perdagangan masa lalu (historical profit) yang dikirimkan oleh sistem saraf notifikasi harian tidak menjamin hasil profit di masa depan.</p>
-            </div>
-
-            <label className="flex items-start gap-3 p-4 bg-purple-500/5 border border-purple-500/20 rounded-xl cursor-pointer select-none group">
-              <input 
-                type="checkbox" 
-                className="peer sr-only"
-                checked={form.agreement}
-                onChange={e => setForm({...form, agreement: e.target.checked})}
-              />
-              <div className="w-5 h-5 border-2 border-slate-500 rounded flex items-center justify-center peer-checked:bg-purple-500 peer-checked:border-purple-500 transition-colors shrink-0 mt-0.5">
-                {form.agreement && <ShieldCheck size={14} className="text-white" />}
-              </div>
-              <p className="text-[11px] font-bold text-slate-300 group-hover:text-white transition-colors leading-tight">
-                Saya memahami risiko pasar, setuju dengan isi disclaimer, serta bersedia menerima log laporan trading harian via Email, WhatsApp, dan Telegram.
-              </p>
-            </label>
-
-            <div className="flex gap-4">
-              <button type="button" onClick={prevStep} className="px-4 bg-white/5 hover:bg-white/10 text-white rounded-xl border border-white/10 transition-all flex items-center justify-center"><ArrowLeft size={16}/></button>
-              <button 
-                type="submit" 
-                disabled={isSubmitting || !form.agreement}
-                className="w-full bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white font-black text-xs tracking-widest uppercase rounded-xl py-3.5 shadow-[0_0_25px_rgba(147,51,234,0.3)] transition-all flex items-center justify-center gap-2"
-              >
-                {isSubmitting ? (
-                  <><Loader2 size={16} className="animate-spin" /> SUBMITTING PROTOCOL...</>
-                ) : (
-                  <><ShieldCheck size={16}/> KIRIM DATA & AJUKAN AKTIVASI</>
-                )}
-              </button>
-            </div>
-          </form>
-        )}
-
       </div>
     </div>
   );

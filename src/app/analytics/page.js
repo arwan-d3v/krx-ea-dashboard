@@ -1,284 +1,522 @@
 "use client";
-import { useState, useEffect } from "react";
-import { 
-  CalendarDays, BarChart, Target, TrendingUp, 
-  TrendingDown, Activity, ShieldAlert, BadgeDollarSign, 
-  PieChart, ChevronLeft, ChevronRight, ChevronDown
-} from "lucide-react";
-import { db } from "../../lib/firebase"; 
+import { useState, useEffect, useMemo } from "react";
+import { useAuth } from "../context/AuthContext";
+import { db } from "../../lib/firebase";
 import { ref, onValue } from "firebase/database";
+import {
+  Calendar,
+  ChevronLeft,
+  ChevronRight,
+  TrendingUp,
+  DollarSign,
+  BarChart3,
+  Scale,
+  Cpu,
+  Loader2,
+  AlertTriangle,
+  Zap,
+  Wallet,
+} from "lucide-react";
+
+// ============================================================================
+// ANALYTICS PAGE — Multi-Role Calendar View
+//   - Calendar monthly heatmap showing daily metrics
+//   - Lot Volume, % Growth, Nominal Profit per day
+//   - Data sourced from account_data/{accNum}/daily_history since bot_start_date
+//   - super_admin: all accounts | admin: group-scoped | investor: owned accounts
+// ============================================================================
 
 export default function AnalyticsPage() {
-  const [allAccountsData, setAllAccountsData] = useState({});
-  const [accountsList, setAccountsList] = useState([]);
-  const [selectedAccountId, setSelectedAccountId] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
-  const [viewDate, setViewDate] = useState(new Date()); 
+  const { user, role } = useAuth();
+  return <AnalyticsContent user={user} role={role} />;
+}
+
+function AnalyticsContent({ user, role }) {
+  const [loading, setLoading] = useState(true);
+  const [selectedAccount, setSelectedAccount] = useState(null);
+  const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
+  const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
+
+  // Firebase data
+  const [userData, setUserData] = useState(null);
+  const [accountData, setAccountData] = useState({});
+  const [groupsData, setGroupsData] = useState({});
+  const [profitHistory, setProfitHistory] = useState({});
+
+  // ── Load user profile & managed groups ──
+  useEffect(() => {
+    if (!user) return;
+    const unsub = onValue(ref(db, `users/${user.uid}`), (snap) => {
+      if (snap.exists()) setUserData(snap.val());
+      else setUserData(null);
+    });
+    return () => unsub();
+  }, [user]);
 
   useEffect(() => {
-    const accountsRef = ref(db, 'account_data');
-    const unsubscribe = onValue(accountsRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data) {
-        setAllAccountsData(data);
-        const accounts = Object.keys(data);
-        setAccountsList(accounts);
-        if (!selectedAccountId || !accounts.includes(selectedAccountId)) {
-          setSelectedAccountId(accounts[0]);
+    const unsub = onValue(ref(db, "account_data"), (snap) => {
+      if (snap.exists()) setAccountData(snap.val());
+      else setAccountData({});
+    });
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    const unsub = onValue(ref(db, "groups"), (snap) => {
+      if (snap.exists()) setGroupsData(snap.val());
+      else setGroupsData({});
+    });
+    return () => unsub();
+  }, []);
+
+  // Derived: owned account numbers PER ROLE
+  const ownedAccounts = useMemo(() => {
+    if (!accountData) return [];
+
+    // ── super_admin: all accounts ──
+    if (role === "super_admin") {
+      return Object.keys(accountData).sort();
+    }
+
+    // ── admin: accounts from managed_groups ──
+    if (role === "admin") {
+      const managed = userData?.managed_groups || {};
+      const allowed = new Set();
+      Object.keys(managed).filter(k => managed[k]).forEach(groupId => {
+        const g = groupsData[groupId];
+        if (g?.accounts) Object.keys(g.accounts).forEach(acc => allowed.add(acc));
+      });
+      return [...allowed].filter(acc => accountData[acc]).sort();
+    }
+
+    // ── investor: owned_accounts or subscriptions ──
+    if (role === "investor") {
+      // Coba dari owned_accounts dulu
+      const owned = userData?.owned_accounts || {};
+      const fromOwned = Object.keys(owned).filter(k => owned[k] && accountData[k]);
+      if (fromOwned.length > 0) return fromOwned.sort();
+      
+      // Fallback: dari subscriptions (struktur lama)
+      const subs = userData?.subscriptions || {};
+      const fromSubs = [];
+      Object.entries(subs).forEach(([vpsKey, vpsData]) => {
+        Object.entries(vpsData.accounts || {}).forEach(([accNum]) => {
+          if (accountData[accNum]) fromSubs.push(accNum);
+        });
+      });
+      return fromSubs.sort();
+    }
+
+    return [];
+  }, [userData, accountData, groupsData, role]);
+
+  // Load daily_history from unified account_data/{accNum}/daily_history
+  useEffect(() => {
+    if (!selectedAccount) return;
+    const unsub = onValue(
+      ref(db, `account_data/${selectedAccount}/daily_history`),
+      (snap) => {
+        if (snap.exists()) {
+          setProfitHistory((prev) => ({
+            ...prev,
+            [selectedAccount]: snap.val(),
+          }));
         }
       }
-      setIsLoading(false);
-    });
-    return () => unsubscribe();
-  }, [selectedAccountId]);
+    );
+    return () => unsub();
+  }, [selectedAccount]);
 
-  const currentMonth = viewDate.getMonth();
-  const currentYear = viewDate.getFullYear();
-  const monthName = viewDate.toLocaleString('id-ID', { month: 'long', year: 'numeric' });
+  // Remove unused setLoading
+  useEffect(() => {
+    const t = setTimeout(() => setLoading(false), 600);
+    return () => clearTimeout(t);
+  }, []);
 
-  const goToPrevMonth = () => setViewDate(new Date(currentYear, currentMonth - 1, 1));
-  const goToNextMonth = () => setViewDate(new Date(currentYear, currentMonth + 1, 1));
-
-  // --- PEMROSESAN DATA SNAPSHOT (FIX DETIK VS MILIDETIK) ---
-  const snapshots = allAccountsData[selectedAccountId]?.snapshots || {};
-  const processedSnapshots = {};
-
-  Object.keys(snapshots).forEach(tsKey => {
-    let timeMs = parseInt(tsKey);
-    
-    // Jika EA mengirim format DETIK (10 digit angka), kalikan 1000 jadi MILIDETIK
-    if (timeMs < 10000000000) {
-      timeMs = timeMs * 1000;
+  // Auto-select first account
+  useEffect(() => {
+    if (!selectedAccount && ownedAccounts.length > 0) {
+      setSelectedAccount(ownedAccounts[0]);
     }
+  }, [ownedAccounts, selectedAccount]);
 
-    // Tambah 8 jam (28.800.000 ms) untuk konversi ke WITA / GMT+8 Mutlak
-    const exactDateWITA = new Date(timeMs + 28800000); 
-    
-    const y = exactDateWITA.getUTCFullYear();
-    const m = exactDateWITA.getUTCMonth(); 
-    const d = exactDateWITA.getUTCDate();
-    
-    processedSnapshots[`${y}-${m}-${d}`] = snapshots[tsKey];
-  });
-
-  // --- GENERATOR HARI ---
-  const generateMonthlyData = () => {
-    const days = [];
-    const firstDayOfMonth = new Date(currentYear, currentMonth, 1).getDay(); 
-    const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
-
-    for (let i = 0; i < firstDayOfMonth; i++) {
-      days.push({ empty: true });
+  // ── MONTH NAVIGATION ──
+  const prevMonth = () => {
+    if (currentMonth === 0) {
+      setCurrentMonth(11);
+      setCurrentYear((y) => y - 1);
+    } else {
+      setCurrentMonth((m) => m - 1);
     }
-
-    const today = new Date();
-    const currentMonthToday = today.getMonth();
-    const currentYearToday = today.getFullYear();
-
-    for (let i = 1; i <= daysInMonth; i++) {
-      const isFuture = (currentYear === currentYearToday && currentMonth === currentMonthToday && i > today.getDate()) 
-                       || (currentYear > currentYearToday) 
-                       || (currentYear === currentYearToday && currentMonth > currentMonthToday);
-
-      const lookupKey = `${currentYear}-${currentMonth}-${i}`;
-      const dayData = processedSnapshots[lookupKey];
-
-      let profit = 0; let growth = 0; let lot = 0; let status = 'neutral';
-
-      if (isFuture) {
-        status = 'future';
-      } else if (dayData) {
-        // Fallback property keys (Mencegah error jika EA memakai nama variabel berbeda)
-        profit = dayData.daily_profit || dayData.profit || 0;
-        growth = dayData.daily_growth_percent || dayData.growth || dayData.growth_percent || 0;
-        lot = dayData.daily_lots || dayData.lot || dayData.lots || 0;
-        
-        if (profit > 0) status = 'win';
-        else if (profit < 0) status = 'loss';
-      }
-
-      days.push({ day: i, empty: false, status, profit, growth, lot });
-    }
-
-    while (days.length % 7 !== 0) days.push({ empty: true });
-    return days;
   };
 
-  const monthlyDays = generateMonthlyData();
-
-  // --- KALKULASI FUND MANAGER METRICS ---
-  let grossProfit = 0; let grossLoss = 0; let maxDailyProfit = 0; let maxDailyLoss = 0;
-  let winDays = 0; let totalTradingDays = 0;
-
-  monthlyDays.forEach(d => {
-    if (!d.empty && d.status !== 'future' && (d.profit !== 0 || d.lot > 0)) {
-      totalTradingDays++;
-      if (d.profit > 0) {
-        grossProfit += d.profit; winDays++;
-        if (d.profit > maxDailyProfit) maxDailyProfit = d.profit;
-      } else if (d.profit < 0) {
-        const absLoss = Math.abs(d.profit);
-        grossLoss += absLoss;
-        if (absLoss > maxDailyLoss) maxDailyLoss = absLoss;
-      }
+  const nextMonth = () => {
+    if (currentMonth === 11) {
+      setCurrentMonth(0);
+      setCurrentYear((y) => y + 1);
+    } else {
+      setCurrentMonth((m) => m + 1);
     }
-  });
+  };
 
-  const netProfit = grossProfit - grossLoss;
-  const profitFactor = grossLoss > 0 ? (grossProfit / grossLoss).toFixed(2) : (grossProfit > 0 ? "∞" : "0.00");
-  const winRate = totalTradingDays > 0 ? ((winDays / totalTradingDays) * 100).toFixed(1) : 0;
+  const monthNames = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+  ];
 
-  const formatCur = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val || 0);
+  // ── BUILD CALENDAR GRID ──
+  const calendarDays = useMemo(() => {
+    const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+    const firstDayOfWeek = new Date(currentYear, currentMonth, 1).getDay(); // 0=Sun
+    const days = [];
 
-  if (isLoading) return <div className="flex justify-center items-center h-screen font-bold text-[var(--primary)] animate-pulse">Menyiapkan Data Analitik...</div>;
+    // Previous month padding
+    const prevMonthDays = new Date(currentYear, currentMonth, 0).getDate();
+    for (let i = firstDayOfWeek - 1; i >= 0; i--) {
+      days.push({
+        day: prevMonthDays - i,
+        month: currentMonth === 0 ? 11 : currentMonth - 1,
+        year: currentMonth === 0 ? currentYear - 1 : currentYear,
+        isCurrentMonth: false,
+      });
+    }
+
+    // Current month
+    for (let d = 1; d <= daysInMonth; d++) {
+      days.push({
+        day: d,
+        month: currentMonth,
+        year: currentYear,
+        isCurrentMonth: true,
+        dateStr: `${currentYear}-${String(currentMonth + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`,
+      });
+    }
+
+    // Next month padding to fill 6 rows (42 cells)
+    const remaining = 42 - days.length;
+    for (let d = 1; d <= remaining; d++) {
+      days.push({
+        day: d,
+        month: currentMonth === 11 ? 0 : currentMonth + 1,
+        year: currentMonth === 11 ? currentYear + 1 : currentYear,
+        isCurrentMonth: false,
+      });
+    }
+
+    return days;
+  }, [currentMonth, currentYear]);
+
+  // ── Get daily profit data for selected account ──
+  const getDayData = (dateStr) => {
+    if (!selectedAccount || !profitHistory[selectedAccount]) return null;
+    return profitHistory[selectedAccount][dateStr] || null;
+  };
+
+  // ── Compute summary for current month ──
+  const monthlySummary = useMemo(() => {
+    if (!selectedAccount || !profitHistory[selectedAccount]) {
+      return { totalProfit: 0, totalVolume: 0, avgGrowth: 0, tradingDays: 0 };
+    }
+    const monthPrefix = `${currentYear}-${String(currentMonth + 1).padStart(2, "0")}`;
+    let totalProfit = 0;
+    let totalVolume = 0;
+    let totalGrowth = 0;
+    let tradingDays = 0;
+
+    Object.entries(profitHistory[selectedAccount]).forEach(([dateStr, data]) => {
+      if (dateStr.startsWith(monthPrefix)) {
+        totalProfit += data.daily_profit || 0;
+        totalVolume += data.lot_volume || 0;
+        totalGrowth += data.percentage_growth || 0;
+        tradingDays++;
+      }
+    });
+
+    return {
+      totalProfit,
+      totalVolume: +totalVolume.toFixed(2),
+      avgGrowth: tradingDays > 0 ? +(totalGrowth / tradingDays).toFixed(2) : 0,
+      tradingDays,
+    };
+  }, [selectedAccount, profitHistory, currentMonth, currentYear]);
+
+  // ── Heat color based on daily profit ──
+  const getHeatColor = (dayData) => {
+    if (!dayData) return "bg-transparent";
+    const profit = dayData.daily_profit || 0;
+    if (profit > 50) return "bg-emerald-600/60 border-emerald-400/40";
+    if (profit > 20) return "bg-emerald-500/40 border-emerald-400/30";
+    if (profit > 0) return "bg-emerald-500/20 border-emerald-400/20";
+    if (profit === 0) return "bg-slate-500/10 border-slate-500/20";
+    if (profit > -20) return "bg-red-500/20 border-red-400/20";
+    if (profit > -50) return "bg-red-500/40 border-red-400/30";
+    return "bg-red-600/60 border-red-400/40";
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[var(--background)]">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 rounded-full bg-blue-600/20 flex items-center justify-center animate-pulse">
+            <Loader2 size={24} className="text-blue-400 animate-spin" />
+          </div>
+          <p className="text-sm text-[var(--muted-foreground)]">Loading analytics...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (ownedAccounts.length === 0) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[var(--background)] p-8">
+        <div className="bg-[var(--card-bg)] border border-[var(--card-border)] rounded-3xl p-12 text-center max-w-md">
+          <AlertTriangle size={48} className="mx-auto text-amber-500 mb-4" />
+          <h2 className="text-xl font-bold text-[var(--foreground)] mb-2">No EA Accounts</h2>
+          <p className="text-sm text-[var(--muted-foreground)]">
+            You don't own any EA accounts yet. Please contact your admin for account assignment.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const accInfo = selectedAccount ? accountData[selectedAccount] : null;
+  const botStartDate = accInfo?.metadata?.bot_start_date || null;
 
   return (
-    <div className="p-4 md:p-8 space-y-6 max-w-7xl mx-auto font-sans transition-colors duration-300">
-      
-      {/* HEADER & ACCOUNT SELECTOR */}
-      <div className="bg-[var(--card-bg)] rounded-3xl border border-[var(--card-border)] p-6 md:p-8 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-         <div className="flex items-center gap-5 w-full md:w-auto">
-            <div className="p-4 rounded-2xl bg-[var(--primary)]/10 text-[var(--primary)] shadow-inner"><BarChart size={36}/></div>
+    <div className="p-4 md:p-8 space-y-6 max-w-7xl mx-auto font-sans">
+      {/* HEADER */}
+      <div className="bg-[var(--card-bg)] rounded-3xl border border-[var(--card-border)] p-6 md:p-8 shadow-sm">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="flex items-center gap-5">
+            <div className="p-4 rounded-2xl bg-gradient-to-br from-blue-600/20 to-cyan-600/20 text-blue-400 shadow-inner">
+              <BarChart3 size={36} />
+            </div>
             <div>
-               <h1 className="text-2xl font-black text-[var(--foreground)] tracking-tight">Performance Analytics</h1>
-               <p className="text-sm text-[var(--muted-foreground)]">Analisis mendalam per akun dan histori bulanan.</p>
-            </div>
-         </div>
-
-         <div className="w-full md:w-auto bg-[var(--muted)]/50 p-3.5 rounded-2xl border border-[var(--card-border)] flex flex-col gap-1.5 shadow-sm">
-            <span className="text-[10px] font-bold text-[var(--muted-foreground)] uppercase tracking-wider pl-1">Pilih Akun Analisis</span>
-            <div className="relative">
-               <select 
-                 value={selectedAccountId} 
-                 onChange={(e) => setSelectedAccountId(e.target.value)}
-                 className="appearance-none w-full md:w-64 bg-[var(--background)] border border-[var(--card-border)] text-[var(--foreground)] font-bold text-sm rounded-xl pl-4 pr-10 py-3 outline-none focus:ring-2 focus:ring-[var(--primary)] cursor-pointer shadow-sm transition-all hover:border-[var(--primary)]/50"
-               >
-                 {accountsList.map(acc => <option key={acc} value={acc}>Account: {acc}</option>)}
-               </select>
-               <ChevronDown size={16} className="absolute right-4 top-3.5 text-[var(--muted-foreground)] pointer-events-none" />
-            </div>
-         </div>
-      </div>
-
-      {/* NAVIGATOR BULAN */}
-      <div className="flex justify-between items-center bg-[var(--card-bg)] p-4 rounded-2xl border border-[var(--card-border)] shadow-sm">
-         <button onClick={goToPrevMonth} className="p-2 hover:bg-[var(--muted)] rounded-xl transition-colors text-[var(--foreground)] border border-[var(--card-border)] shadow-sm">
-            <ChevronLeft size={20}/>
-         </button>
-         <div className="flex items-center gap-3">
-            <CalendarDays size={20} className="text-[var(--primary)]"/>
-            <h2 className="text-lg font-black text-[var(--foreground)] uppercase tracking-widest">{monthName}</h2>
-         </div>
-         <button onClick={goToNextMonth} disabled={currentYear === new Date().getFullYear() && currentMonth === new Date().getMonth()} className="p-2 hover:bg-[var(--muted)] disabled:opacity-30 disabled:hover:bg-transparent rounded-xl transition-colors text-[var(--foreground)] border border-[var(--card-border)] shadow-sm">
-            <ChevronRight size={20}/>
-         </button>
-      </div>
-
-      {/* FUND MANAGER SUMMARY */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-        {[
-          { label: "Net Profit", val: formatCur(netProfit), icon: BadgeDollarSign, c: "text-blue-500" },
-          { label: "Gross Profit", val: formatCur(grossProfit), icon: TrendingUp, c: "text-green-500" },
-          { label: "Gross Loss", val: `-${formatCur(grossLoss)}`, icon: TrendingDown, c: "text-red-500" },
-          { label: "Profit Factor", val: profitFactor, icon: Activity, c: "text-purple-500" },
-          { label: "Win Rate", val: `${winRate}%`, icon: PieChart, c: "text-orange-500" },
-          { label: "Trades", val: `${totalTradingDays} Days`, icon: Target, c: "text-[var(--foreground)]" },
-        ].map((item, i) => (
-          <div key={i} className="bg-[var(--card-bg)] p-4 rounded-2xl border border-[var(--card-border)] shadow-sm hover:border-[var(--primary)] transition-all">
-            <div className="flex items-center gap-2 mb-2">
-              <item.icon size={14} className={item.c} />
-              <span className="text-[9px] font-bold text-[var(--muted-foreground)] uppercase tracking-wider">{item.label}</span>
-            </div>
-            <div className={`text-lg font-black tracking-tight ${item.label === 'Gross Loss' ? 'text-red-500' : 'text-[var(--foreground)]'}`}>
-              {item.val}
+              <h1 className="text-2xl font-black text-[var(--foreground)] tracking-tight">
+                Analytics & Performance
+              </h1>
+              <p className="text-sm text-[var(--muted-foreground)]">
+                Daily breakdown of Lot Volume, % Growth, and Nominal Profit.
+              </p>
             </div>
           </div>
-        ))}
-      </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="bg-[var(--card-bg)] p-5 rounded-2xl border border-[var(--card-border)] shadow-sm flex justify-between items-center hover:border-green-500/50 transition-colors">
-          <div>
-            <span className="text-xs font-bold text-[var(--muted-foreground)] uppercase flex items-center gap-1.5"><TrendingUp size={14} className="text-green-500"/> Max Daily Profit</span>
-            <span className="text-2xl font-black text-green-500 mt-1 block">{formatCur(maxDailyProfit)}</span>
-          </div>
-        </div>
-        <div className="bg-[var(--card-bg)] p-5 rounded-2xl border border-[var(--card-border)] shadow-sm flex justify-between items-center hover:border-red-500/50 transition-colors">
-          <div>
-            <span className="text-xs font-bold text-[var(--muted-foreground)] uppercase flex items-center gap-1.5"><ShieldAlert size={14} className="text-red-500"/> Max Daily Loss</span>
-            <span className="text-2xl font-black text-red-500 mt-1 block">{formatCur(maxDailyLoss)}</span>
-          </div>
-        </div>
-      </div>
-
-      {/* HEATMAP KALENDER DINAMIS (ANTI-PURGE INLINE STYLES) */}
-      <div className="bg-[var(--card-bg)] rounded-3xl border border-[var(--card-border)] p-6 md:p-8 shadow-sm relative overflow-hidden transition-colors">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
-          <h3 className="font-bold text-xl md:text-2xl text-[var(--foreground)] flex items-center gap-2 tracking-tight">
-            <CalendarDays className="text-[var(--primary)]" /> {monthName} Heatmap
-          </h3>
-          <div className="flex items-center gap-4 text-[10px] font-bold bg-[var(--background)] px-4 py-2 rounded-xl border border-[var(--card-border)] shadow-sm">
-            <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-[#10b981]"></div> PROFIT</div>
-            <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-[#ef4444]"></div> LOSS</div>
-          </div>
-        </div>
-
-        <div className="w-full overflow-x-auto pb-4 custom-scrollbar">
-          <div style={{ minWidth: '750px' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: '12px' }} className="mb-3 text-center">
-              {["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"].map((day, i) => (
-                <div key={i} className="text-xs font-black text-[var(--muted-foreground)] uppercase tracking-widest">{day}</div>
+          {/* Account Selector */}
+          <div className="flex items-center gap-3">
+            <Cpu size={16} className="text-blue-400 flex-shrink-0" />
+            <select
+              value={selectedAccount || ""}
+              onChange={(e) => setSelectedAccount(e.target.value)}
+              className="bg-[var(--muted)] border border-[var(--card-border)] text-[var(--foreground)] text-sm rounded-xl px-4 py-2.5 outline-none cursor-pointer font-mono font-bold min-w-[200px]"
+            >
+              {ownedAccounts.map((accNum) => (
+                <option key={accNum} value={accNum}>
+                  {accNum}
+                </option>
               ))}
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: '12px' }}>
-              {monthlyDays.map((d, i) => {
-                const isWin = d.status === 'win';
-                const isLoss = d.status === 'loss';
-                const isNeutral = d.status === 'neutral';
-                const isFuture = d.status === 'future';
-
-                return (
-                  <div 
-                    key={i} 
-                    style={{
-                      ...(isWin ? { backgroundColor: '#10b981', borderColor: '#10b981', color: 'white' } : {}),
-                      ...(isLoss ? { backgroundColor: '#ef4444', borderColor: '#ef4444', color: 'white' } : {})
-                    }}
-                    className={`
-                      relative flex flex-col justify-between p-3 rounded-2xl aspect-[4/3] transition-all border
-                      ${d.empty ? 'opacity-0 pointer-events-none border-transparent' : 'hover:-translate-y-1 hover:shadow-lg'}
-                      ${isWin || isLoss ? 'shadow-md text-white' : ''}
-                      ${isNeutral ? 'bg-[var(--background)] border-[var(--card-border)]' : ''}
-                      ${isFuture ? 'bg-[var(--muted)]/20 border-[var(--card-border)] border-dashed opacity-50' : ''}
-                    `}
-                  >
-                    {!d.empty && (
-                      <>
-                        <span className={`text-[11px] font-bold ${isWin || isLoss ? 'text-white' : 'text-[var(--muted-foreground)]'}`}>
-                          {d.day}
-                        </span>
-                        
-                        <div className="flex-grow flex items-center justify-center">
-                          <span className={`text-xl md:text-2xl font-black tracking-tighter ${isWin || isLoss ? 'text-white' : isFuture ? 'opacity-0' : 'text-[var(--foreground)]'}`}>
-                            {isNeutral && d.lot === 0 ? '0.00%' : (d.growth > 0 ? `+${d.growth.toFixed(2)}%` : `${d.growth.toFixed(2)}%`)}
-                          </span>
-                        </div>
-                        
-                        <div className={`flex flex-col text-[10px] font-bold leading-snug mt-1 ${isWin || isLoss ? 'text-white/90' : 'text-[var(--muted-foreground)]'} ${isFuture || (isNeutral && d.lot === 0) ? 'opacity-0' : ''}`}>
-                          <span>${Math.abs(d.profit).toFixed(2)}</span>
-                          <span>{d.lot.toFixed(2)} L</span>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+            </select>
           </div>
         </div>
+
+        {/* Account Info Row */}
+        {accInfo && (
+          <div className="mt-4 flex flex-wrap gap-3 text-[10px] text-[var(--muted-foreground)] uppercase tracking-wider">
+            <span className="px-3 py-1 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-bold">
+              VPS: {accInfo.metadata?.vps_name || "N/A"}
+            </span>
+            <span className="px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold">
+              Balance: ${Number(accInfo.balance || 0).toLocaleString()}
+            </span>
+            {botStartDate && (
+              <span className="px-3 py-1 rounded-full bg-purple-500/10 text-purple-400 border border-purple-500/20 font-bold">
+                Started: {new Date(botStartDate).toLocaleDateString()}
+              </span>
+            )}
+          </div>
+        )}
       </div>
-      
+
+      {/* MONTHLY SUMMARY CARDS */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <SummaryCard
+          icon={<DollarSign size={20} className="text-emerald-400" />}
+          label="Total Profit"
+          value={`$${monthlySummary.totalProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          sub={`${monthlySummary.tradingDays} trading days`}
+          accent="emerald"
+        />
+        <SummaryCard
+          icon={<Scale size={20} className="text-blue-400" />}
+          label="Lot Volume"
+          value={monthlySummary.totalVolume.toFixed(2)}
+          sub="Lots traded"
+          accent="blue"
+        />
+        <SummaryCard
+          icon={<TrendingUp size={20} className="text-purple-400" />}
+          label="Avg Daily Growth"
+          value={`${monthlySummary.avgGrowth}%`}
+          sub="Per trading day"
+          accent="purple"
+        />
+        <SummaryCard
+          icon={<Wallet size={20} className="text-amber-400" />}
+          label="Account"
+          value={selectedAccount || "—"}
+          sub={accInfo?.metadata?.vps_name || "No VPS"}
+          accent="amber"
+        />
+      </div>
+
+      {/* CALENDAR */}
+      <div className="bg-[var(--card-bg)] border border-[var(--card-border)] rounded-3xl overflow-hidden">
+        {/* Month Navigator */}
+        <div className="p-6 border-b border-[var(--card-border)] flex items-center justify-between">
+          <button
+            onClick={prevMonth}
+            className="p-2 rounded-xl hover:bg-[var(--muted)] transition-colors text-[var(--foreground)]"
+          >
+            <ChevronLeft size={20} />
+          </button>
+          <h2 className="text-lg font-black text-[var(--foreground)] flex items-center gap-2">
+            <Calendar size={20} className="text-blue-400" />
+            {monthNames[currentMonth]} {currentYear}
+          </h2>
+          <button
+            onClick={nextMonth}
+            className="p-2 rounded-xl hover:bg-[var(--muted)] transition-colors text-[var(--foreground)]"
+          >
+            <ChevronRight size={20} />
+          </button>
+        </div>
+
+        {/* Calendar Grid */}
+        <div className="p-4">
+          {/* Day headers */}
+          <div className="grid grid-cols-7 gap-1 mb-2">
+            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
+              <div
+                key={d}
+                className="text-center text-[10px] font-bold text-[var(--muted-foreground)] uppercase tracking-wider py-2"
+              >
+                {d}
+              </div>
+            ))}
+          </div>
+
+          {/* Day cells */}
+          <div className="grid grid-cols-7 gap-1.5">
+            {calendarDays.map((dayObj, idx) => {
+              const dayData = dayObj.dateStr ? getDayData(dayObj.dateStr) : null;
+              const isToday =
+                dayObj.isCurrentMonth &&
+                dayObj.day === new Date().getDate() &&
+                currentMonth === new Date().getMonth() &&
+                currentYear === new Date().getFullYear();
+
+              return (
+                <div
+                  key={idx}
+                  className={`relative rounded-xl border p-2 min-h-[80px] sm:min-h-[100px] transition-all ${
+                    dayObj.isCurrentMonth
+                      ? `${getHeatColor(dayData)} cursor-default`
+                      : "bg-[var(--background)]/30 border-transparent opacity-30"
+                  } ${isToday ? "ring-2 ring-blue-500 ring-offset-1 ring-offset-[var(--card-bg)]" : ""}`}
+                >
+                  <span
+                    className={`text-xs font-bold ${
+                      dayObj.isCurrentMonth
+                        ? isToday
+                          ? "text-blue-400"
+                          : "text-[var(--foreground)]"
+                        : "text-[var(--muted-foreground)]"
+                    }`}
+                  >
+                    {dayObj.day}
+                  </span>
+
+                  {/* Daily Data Tooltip */}
+                  {dayObj.isCurrentMonth && dayData && (
+                    <div className="mt-1 space-y-0.5">
+                      <div className="flex items-center gap-1">
+                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
+                        <span className="text-[9px] text-emerald-400 font-bold">
+                          ${Number(dayData.daily_profit || 0).toFixed(0)}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <div className="w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />
+                        <span className="text-[9px] text-blue-400 font-bold">
+                          {Number(dayData.lot_volume || 0).toFixed(1)}L
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <div className="w-1.5 h-1.5 rounded-full bg-purple-400 flex-shrink-0" />
+                        <span className="text-[9px] text-purple-400 font-bold">
+                          {Number(dayData.percentage_growth || 0).toFixed(2)}%
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Legend */}
+        <div className="px-6 pb-6 flex flex-wrap items-center gap-4 text-[10px]">
+          <span className="text-[var(--muted-foreground)] font-bold uppercase tracking-wider">
+            Heatmap:
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded bg-red-600/60 border border-red-400/40" />
+            {`Loss >$50`}
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded bg-red-500/20 border border-red-400/20" />
+            {`Loss <$20`}
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded bg-slate-500/10 border border-slate-500/20" />
+            Netral
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded bg-emerald-500/20 border border-emerald-400/20" />
+            {`Profit <$20`}
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded bg-emerald-600/60 border border-emerald-400/40" />
+            {`Profit >$50`}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Summary Card ──
+function SummaryCard({ icon, label, value, sub, accent }) {
+  const accentMap = {
+    emerald: "border-emerald-500/20 bg-emerald-500/5",
+    blue: "border-blue-500/20 bg-blue-500/5",
+    purple: "border-purple-500/20 bg-purple-500/5",
+    amber: "border-amber-500/20 bg-amber-500/5",
+  };
+
+  return (
+    <div
+      className={`bg-[var(--card-bg)] border rounded-2xl p-5 ${accentMap[accent] || "border-[var(--card-border)]"}`}
+    >
+      <div className="flex items-center gap-3 mb-3">{icon}</div>
+      <div className="text-[10px] font-bold text-[var(--muted-foreground)] uppercase tracking-wider mb-1">
+        {label}
+      </div>
+      <div className="text-lg font-black text-[var(--foreground)] tracking-tight truncate">
+        {value}
+      </div>
+      <div className="text-[10px] text-[var(--muted-foreground)] mt-0.5">{sub}</div>
     </div>
   );
 }
