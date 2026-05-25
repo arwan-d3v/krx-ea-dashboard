@@ -1,5 +1,6 @@
 // ============================================================================
 // KRX TELEGRAM NOTIFICATION API ROUTE — v3.0 REDESIGN
+// Cloudflare deploy trigger: 2026-05-25
 // ============================================================================
 // Fungsi: Dipanggil oleh SystemTriggerListener saat mendeteksi trigger dari
 // Firebase. Memproses data dan mengirim notifikasi Telegram dengan template
