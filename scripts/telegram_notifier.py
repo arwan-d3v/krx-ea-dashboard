@@ -543,6 +543,108 @@ def send_profit_share_notification(payload):
     return success
 
 
+def send_vps_billing_check(firebase_db):
+    """VPS Billing Check — Ringkasan tagihan VPS bulanan."""
+    date_str = get_date_string()
+
+    try:
+        users_ref = firebase_db.reference("users")
+        all_users = users_ref.get() or {}
+    except Exception as e:
+        logger.error(f"[VPS Billing Check] Error: {e}")
+        return False
+
+    billings = []
+    for uid, user_data in all_users.items():
+        subscriptions = (user_data or {}).get("subscriptions") or {}
+        for vps_key, vps_data in subscriptions.items():
+            billing = (vps_data or {}).get("billing") or {}
+            if billing:
+                billings.append({
+                    "investor": user_data.get("fullName") or uid,
+                    "vps_name": vps_data.get("vps_name") or vps_key,
+                    "amount": billing.get("monthly_cost") or 0,
+                    "due_date": billing.get("next_due_date") or "N/A",
+                    "status": billing.get("status") or "unknown",
+                })
+
+    msg = f"💰 <b>VPS BILLING CHECK</b>\n"
+    msg += f"📅 {date_str}\n"
+    msg += f"━━━━━━━━━━━━━━━━━━━━━━\n"
+
+    if not billings:
+        msg += f"\n📋 Tidak ada data tagihan VPS ditemukan.\n"
+    else:
+        msg += f"\n📊 <b>RINGKASAN TAGIHAN</b>\n"
+        total = 0
+        for b in billings[:10]:
+            prefix = "├" if b != billings[-1] else "└"
+            msg += f"{prefix} 🖥️ {b['vps_name']} — ${format_currency(b['amount'])} (due: {b['due_date']})\n"
+            total += b["amount"]
+        msg += f"\n💰 Total Bulanan: ${format_currency(total)}\n"
+
+    msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += f"#VPSBilling #Check\n"
+
+    success = send_telegram_message(msg, TOPIC_LOGS)
+    logger.info(f"[Telegram] VPS billing check sent: {success}")
+    return success
+
+
+def send_vps_expiry_check(firebase_db):
+    """VPS Expiry Check — Cek lisensi VPS yang akan habis."""
+    date_str = get_date_string()
+    today = datetime.now()
+
+    try:
+        users_ref = firebase_db.reference("users")
+        all_users = users_ref.get() or {}
+    except Exception as e:
+        logger.error(f"[VPS Expiry Check] Error: {e}")
+        return False
+
+    expiring = []
+    for uid, user_data in all_users.items():
+        subscriptions = (user_data or {}).get("subscriptions") or {}
+        for vps_key, vps_data in subscriptions.items():
+            expiry_date = (vps_data or {}).get("license_expiry_date")
+            if not expiry_date:
+                continue
+            try:
+                exp_dt = datetime.strptime(expiry_date, "%Y-%m-%d")
+                days_left = (exp_dt - today).days
+                if days_left <= 30:
+                    expiring.append({
+                        "investor": user_data.get("fullName") or uid,
+                        "vps_name": vps_data.get("vps_name") or vps_key,
+                        "expiry": expiry_date,
+                        "days_left": days_left,
+                    })
+            except:
+                pass
+
+    expiring.sort(key=lambda x: x["days_left"])
+
+    msg = f"⏰ <b>VPS EXPIRY CHECK</b>\n"
+    msg += f"📅 {date_str}\n"
+    msg += f"━━━━━━━━━━━━━━━━━━━━━━\n"
+
+    if not expiring:
+        msg += f"\n✅ Semua lisensi VPS masih aktif (>30 hari).\n"
+    else:
+        for e in expiring[:10]:
+            urgency = "🚨" if e["days_left"] <= 7 else "⚠️" if e["days_left"] <= 14 else "📌"
+            msg += f"{urgency} <b>{e['vps_name']}</b> ({e['investor']})\n"
+            msg += f"   Expires: {e['expiry']} — {e['days_left']} hari lagi\n"
+
+    msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += f"#VPSExpiry #Check\n"
+
+    success = send_telegram_message(msg, TOPIC_LOGS)
+    logger.info(f"[Telegram] VPS expiry check sent: {success}")
+    return success
+
+
 # ============================================================================
 # DISPATCHER
 # ============================================================================
@@ -560,6 +662,9 @@ def dispatch_notification(trigger_name, firebase_db, payload=None):
         "daily_snapshot": lambda: send_daily_snapshot(firebase_db),
         "vps_billing_warning": lambda: send_vps_billing_warning(payload or {}),
         "vps_billing_urgent": lambda: send_vps_billing_urgent(payload or {}),
+        "vps_billing_check": lambda: send_vps_billing_check(firebase_db),
+        "vps_expiry_check": lambda: send_vps_expiry_check(firebase_db),
+        "profit_share_invoice": lambda: send_profit_share_notification(payload or {}),
         "profit_share_invoice_ready": lambda: send_profit_share_notification(payload or {}),
     }
 
