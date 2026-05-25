@@ -147,6 +147,45 @@ def get_monday_quote():
     return f"💡 <b>Monday Kickstart — {q['category'].upper()}</b>\n<i>\"{q['text']}\"</i>"
 
 
+def get_investors_by_flag(firebase_db, filter_flag=None):
+    """
+    Fetch all investors from Firebase.
+    filter_flag: None = all flags, 'green' = only green, etc.
+    Returns list of dicts: {uid, name, telegram_id, flag, subscriptions}
+    """
+    try:
+        users_ref = firebase_db.reference("users")
+        all_users = users_ref.get() or {}
+    except Exception as e:
+        logger.error(f"[get_investors_by_flag] Error: {e}")
+        return []
+
+    investors = []
+    for uid, user_data in all_users.items():
+        if (user_data or {}).get("role") != "investor":
+            continue
+        
+        telegram_id = (user_data or {}).get("telegramId") or ""
+        flag = (user_data or {}).get("account_flag", "green")
+        subscriptions = (user_data or {}).get("subscriptions") or {}
+        
+        if not subscriptions:
+            continue
+        
+        if filter_flag and flag != filter_flag:
+            continue
+        
+        investors.append({
+            "uid": uid,
+            "name": user_data.get("fullName") or user_data.get("email") or uid,
+            "telegram_id": telegram_id,
+            "flag": flag,
+            "subscriptions": subscriptions,
+        })
+    
+    return investors
+
+
 # ============================================================================
 # NOTIFICATION HANDLERS
 # ============================================================================
@@ -184,6 +223,10 @@ def send_morning_prep():
 
 
 def send_daily_report(firebase_db):
+    """
+    Daily Trading Report — Kirim ke Investor DM (All Flags)
+    Setiap investor dapat ringkasan PnL harian untuk akun milik mereka.
+    """
     date_str = get_date_string()
     today = date.today().strftime("%Y-%m-%d")
 
@@ -194,72 +237,96 @@ def send_daily_report(firebase_db):
         logger.error(f"[Daily Report] Error fetching data: {e}")
         all_accounts = {}
 
-    accounts = []
-    total_pnl = 0
-    total_lots = 0
-    win_count = 0
-    active_count = 0
+    # Get all investors (all flags)
+    investors = get_investors_by_flag(firebase_db)
 
-    for acc_num, data in all_accounts.items():
-        daily_hist = (data or {}).get("daily_history", {}).get(today)
-        if daily_hist:
-            active_count += 1
-            profit = daily_hist.get("daily_profit") or daily_hist.get("profit") or 0
-            growth = daily_hist.get("daily_growth_percent") or daily_hist.get("growth") or 0
-            lots = daily_hist.get("daily_lots") or daily_hist.get("lot") or 0
+    if not investors:
+        logger.info("[Daily Report] No investors found. Skipping.")
+        return True
 
-            total_pnl += profit
-            total_lots += lots
-            if profit > 0:
-                win_count += 1
+    sent_count = 0
+    for inv in investors:
+        # Build account list for this investor
+        inv_accounts = []
+        inv_total_pnl = 0
+        inv_total_lots = 0
+        inv_win_count = 0
+        inv_active_count = 0
 
-            accounts.append({
-                "accNum": acc_num,
-                "profit": profit,
-                "growth": growth,
-                "lots": lots,
-            })
+        for vps_key, vps_data in (inv["subscriptions"] or {}).items():
+            accounts = (vps_data or {}).get("accounts") or {}
+            for acc_num, acc_info in accounts.items():
+                acc_full = (all_accounts or {}).get(acc_num, {})
+                daily_hist = (acc_full or {}).get("daily_history", {}).get(today)
 
-    accounts.sort(key=lambda x: x["profit"], reverse=True)
-    win_rate = (win_count / active_count * 100) if active_count > 0 else 0
+                if daily_hist:
+                    inv_active_count += 1
+                    profit = daily_hist.get("daily_profit") or daily_hist.get("profit") or 0
+                    growth = daily_hist.get("daily_growth_percent") or daily_hist.get("growth") or 0
+                    lots = daily_hist.get("daily_lots") or daily_hist.get("lot") or 0
 
-    msg = f"🌙 <b>DAILY TRADING REPORT</b>\n"
-    msg += f"📅 {date_str}\n"
-    msg += f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                    inv_total_pnl += profit
+                    inv_total_lots += lots
+                    if profit > 0:
+                        inv_win_count += 1
 
-    if active_count == 0:
-        msg += f"\n📊 Tidak ada aktivitas trading hari ini.\n"
-        msg += f"Semua akun dalam kondisi idle.\n"
-    else:
-        msg += f"\n📊 <b>RINGKASAN HARI INI</b>\n"
-        msg += f"├ 💰 Total PnL       : ${format_currency(total_pnl)}\n"
-        msg += f"├ 🔄 Total Lots      : {total_lots:.1f}\n"
-        msg += f"├ 🟢 Win Rate        : {format_percent(win_rate)}%\n"
-        msg += f"└ 🖥️ Akun Aktif      : {active_count}\n"
+                    inv_accounts.append({
+                        "accNum": acc_num,
+                        "profit": profit,
+                        "growth": growth,
+                        "lots": lots,
+                        "vps_name": vps_data.get("vps_name") or vps_key,
+                    })
 
-        if accounts:
-            msg += f"\n📋 <b>BREAKDOWN PER AKUN</b>\n"
-            top = accounts[:5]
-            for idx, acc in enumerate(top):
-                prefix = "└" if idx == len(top) - 1 else "├"
-                sign = "+" if acc["profit"] >= 0 else ""
-                gsign = "+" if acc["growth"] >= 0 else ""
-                msg += f"{prefix} 📌 {acc['accNum']}  : {sign}${format_currency(acc['profit'])} ({gsign}{format_percent(acc['growth'])}%)\n"
-            if len(accounts) > 5:
-                msg += f"└ ... dan {len(accounts) - 5} akun lainnya\n"
+        inv_accounts.sort(key=lambda x: x["profit"], reverse=True)
+        inv_win_rate = (inv_win_count / inv_active_count * 100) if inv_active_count > 0 else 0
 
-    msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n"
-    msg += get_random_quote()
-    msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n"
-    msg += f"📊 Dashboard: <a href=\"{DASHBOARD_URL}\">KRX Dashboard</a>\n"
-    msg += f"\n#DailyReport #KRX"
+        # Build DM message
+        msg = f"🌙 <b>DAILY TRADING REPORT — {inv['name'].upper()}</b>\n"
+        msg += f"📅 {date_str}\n"
+        msg += f"━━━━━━━━━━━━━━━━━━━━━━\n"
 
-    success = send_telegram_message(msg, TOPIC_LOGS)
-    logger.info(f"[Telegram] Daily report sent: {success}")
-    return success
+        if inv_active_count == 0:
+            msg += f"\n📊 Tidak ada aktivitas trading hari ini.\n"
+            msg += f"Semua akun dalam kondisi idle.\n"
+        else:
+            msg += f"\n📊 <b>RINGKASAN HARI INI</b>\n"
+            msg += f"├ 💰 Total PnL       : ${format_currency(inv_total_pnl)}\n"
+            msg += f"├ 🔄 Total Lots      : {inv_total_lots:.1f}\n"
+            msg += f"├ 🟢 Win Rate        : {format_percent(inv_win_rate)}%\n"
+            msg += f"└ 🖥️ Akun Aktif      : {inv_active_count}\n"
+
+            if inv_accounts:
+                msg += f"\n📋 <b>BREAKDOWN PER AKUN</b>\n"
+                for idx, acc in enumerate(inv_accounts):
+                    prefix = "└" if idx == len(inv_accounts) - 1 else "├"
+                    sign = "+" if acc["profit"] >= 0 else ""
+                    gsign = "+" if acc["growth"] >= 0 else ""
+                    msg += f"{prefix} 📌 {acc['accNum']} ({acc['vps_name']})\n"
+                    msg += f"{'   ' if idx == len(inv_accounts) - 1 else '│  '}{sign}${format_currency(acc['profit'])} ({gsign}{format_percent(acc['growth'])}%) | Lots: {acc['lots']:.1f}\n"
+
+        msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n"
+        msg += get_random_quote()
+        msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n"
+        msg += f"📊 Dashboard: <a href=\"{DASHBOARD_URL}\">KRX Dashboard</a>\n"
+        msg += f"\n#DailyReport #KRX"
+
+        # Send DM to investor
+        if inv["telegram_id"]:
+            send_telegram_dm(inv["telegram_id"], msg)
+            sent_count += 1
+
+    logger.info(f"[Telegram] Daily report sent to {sent_count} investors ✓")
+    return True
 
 
 def send_weekly_recap(firebase_db):
+    """
+    Weekly Recap — Sabtu Refleksi
+    Kirim ke:
+      1. Admin Group (Topic: Logs): Summary konsolidasi semua investor
+      2. Investor DM (All Flags): Masing-masing investor dapat receipt mingguan detail
+    """
     date_str = get_date_string()
     today = datetime.now()
 
@@ -280,6 +347,12 @@ def send_weekly_recap(firebase_db):
         logger.error(f"[Weekly Recap] Error: {e}")
         all_accounts = {}
 
+    # Get all investors (all flags)
+    investors = get_investors_by_flag(firebase_db)
+
+    # ========================================================================
+    # ADMIN GROUP: Summary konsolidasi semua investor
+    # ========================================================================
     account_summary = {}
     total_weekly_pnl = 0
     best_day = {"date": "N/A", "profit": float("-inf")}
@@ -316,82 +389,153 @@ def send_weekly_recap(firebase_db):
         accounts.append({"accNum": acc_num, "profit": s["profit"], "avgGrowth": avg_growth})
     accounts.sort(key=lambda x: x["profit"], reverse=True)
 
-    msg = f"📊 <b>WEEKLY RECAP — SABTU REFLEKSI</b>\n"
-    msg += f"📅 {date_str}\n"
-    msg += f"━━━━━━━━━━━━━━━━━━━━━━\n"
+    admin_msg = f"📊 <b>WEEKLY RECAP — SABTU REFLEKSI</b>\n"
+    admin_msg += f"📅 {date_str}\n"
+    admin_msg += f"━━━━━━━━━━━━━━━━━━━━━━\n"
 
     if total_weekly_pnl == 0 and not accounts:
-        msg += f"\n📊 Data mingguan tidak tersedia.\n"
+        admin_msg += f"\n📊 Data mingguan tidak tersedia.\n"
     else:
-        msg += f"\n💎 <b>RINGKASAN MINGGU INI (Sen-Jum)</b>\n"
-        msg += f"├ 💰 Total PnL        : ${format_currency(total_weekly_pnl)}\n"
-        msg += f"├ 🟢 Win Rate         : {format_percent(win_rate)}%\n"
+        admin_msg += f"\n💎 <b>RINGKASAN MINGGU INI (Sen-Jum)</b>\n"
+        admin_msg += f"├ 💰 Total PnL        : ${format_currency(total_weekly_pnl)}\n"
+        admin_msg += f"├ 🟢 Win Rate         : {format_percent(win_rate)}%\n"
         bsign = "+" if best_day["profit"] >= 0 else ""
         wsign = "+" if worst_day["profit"] >= 0 else ""
-        msg += f"├ 📊 Hari Terbaik     : {best_day['date']} (${format_currency(best_day['profit'])})\n"
-        msg += f"└ 📉 Hari Terlemah    : {worst_day['date']} ({wsign}${format_currency(worst_day['profit'])})\n"
+        admin_msg += f"├ 📊 Hari Terbaik     : {best_day['date']} (${format_currency(best_day['profit'])})\n"
+        admin_msg += f"└ 📉 Hari Terlemah    : {worst_day['date']} ({wsign}${format_currency(worst_day['profit'])})\n"
 
         if accounts:
-            msg += f"\n📋 <b>AKUMULASI PER AKUN</b>\n"
+            admin_msg += f"\n📋 <b>AKUMULASI PER AKUN</b>\n"
             top = accounts[:5]
             for idx, acc in enumerate(top):
                 prefix = "└" if idx == len(top) - 1 else "├"
                 sign = "+" if acc["profit"] >= 0 else ""
                 gsign = "+" if acc["avgGrowth"] >= 0 else ""
-                msg += f"{prefix} 📌 {acc['accNum']}  : {sign}${format_currency(acc['profit'])} (avg {gsign}{format_percent(acc['avgGrowth'])}%/hr)\n"
+                admin_msg += f"{prefix} 📌 {acc['accNum']}  : {sign}${format_currency(acc['profit'])} (avg {gsign}{format_percent(acc['avgGrowth'])}%/hr)\n"
 
-    msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n"
-    msg += get_random_quote()
-    msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n"
-    msg += f"🏖️ Istirahat yang baik adalah bagian dari strategi.\n"
-    msg += f"Market akan selalu ada hari Senin.\n"
-    msg += f"\n📊 Dashboard: <a href=\"{DASHBOARD_URL}\">KRX Dashboard</a>\n"
-    msg += f"\n#WeeklyRecap #KRX"
+    admin_msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n"
+    admin_msg += get_random_quote()
+    admin_msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n"
+    admin_msg += f"🏖️ Istirahat yang baik adalah bagian dari strategi.\n"
+    admin_msg += f"Market akan selalu ada hari Senin.\n"
+    admin_msg += f"\n📊 Dashboard: <a href=\"{DASHBOARD_URL}\">KRX Dashboard</a>\n"
+    admin_msg += f"\n#WeeklyRecap #KRX"
 
-    success = send_telegram_message(msg, TOPIC_LOGS)
-    logger.info(f"[Telegram] Weekly recap sent: {success}")
+    success = send_telegram_message(admin_msg, TOPIC_LOGS)
+    logger.info(f"[Telegram] Weekly recap (admin) sent: {success}")
+
+    # ========================================================================
+    # INVESTOR DM: Detail per investor (All Flags)
+    # ========================================================================
+    sent_count = 0
+    for inv in investors:
+        inv_accounts = []
+        inv_total_profit = 0
+        inv_total_lots = 0
+        inv_win_days = 0
+        inv_best_day = {"date": "N/A", "profit": float("-inf")}
+        inv_worst_day = {"date": "N/A", "profit": float("inf")}
+
+        for vps_key, vps_data in (inv["subscriptions"] or {}).items():
+            accounts = (vps_data or {}).get("accounts") or {}
+            for acc_num, acc_info in accounts.items():
+                acc_full = (all_accounts or {}).get(acc_num, {})
+                acc_profit = 0
+                acc_growths = []
+
+                for d in week_days:
+                    daily_hist = (acc_full or {}).get("daily_history", {}).get(d)
+                    if daily_hist:
+                        profit = daily_hist.get("daily_profit") or daily_hist.get("profit") or 0
+                        growth = daily_hist.get("daily_growth_percent") or daily_hist.get("growth") or 0
+                        acc_profit += profit
+                        acc_growths.append(growth)
+
+                if acc_profit != 0 or acc_growths:
+                    avg_growth = sum(acc_growths) / len(acc_growths) if acc_growths else 0
+                    inv_accounts.append({
+                        "accNum": acc_num,
+                        "profit": acc_profit,
+                        "avgGrowth": avg_growth,
+                        "vps_name": vps_data.get("vps_name") or vps_key,
+                    })
+                    inv_total_profit += acc_profit
+
+        if not inv_accounts:
+            continue
+
+        inv_accounts.sort(key=lambda x: x["profit"], reverse=True)
+
+        inv_msg = f"📊 <b>WEEKLY RECAP — {inv['name'].upper()}</b>\n"
+        inv_msg += f"📅 {date_str}\n"
+        inv_msg += f"━━━━━━━━━━━━━━━━━━━━━━\n"
+
+        inv_msg += f"\n💎 <b>RINGKASAN MINGGU INI (Sen-Jum)</b>\n"
+        inv_msg += f"└ 💰 Total PnL        : ${format_currency(inv_total_profit)}\n"
+
+        if inv_accounts:
+            inv_msg += f"\n📋 <b>AKUMULASI PER AKUN</b>\n"
+            for idx, acc in enumerate(inv_accounts):
+                prefix = "└" if idx == len(inv_accounts) - 1 else "├"
+                sign = "+" if acc["profit"] >= 0 else ""
+                gsign = "+" if acc["avgGrowth"] >= 0 else ""
+                inv_msg += f"{prefix} 📌 {acc['accNum']} ({acc['vps_name']})\n"
+                inv_msg += f"{'   ' if idx == len(inv_accounts) - 1 else '│  '}{sign}${format_currency(acc['profit'])} (avg {gsign}{format_percent(acc['avgGrowth'])}%/hr)\n"
+
+        inv_msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n"
+        inv_msg += get_random_quote()
+        inv_msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n"
+        inv_msg += f"🏖️ Istirahat yang baik adalah bagian dari strategi.\n"
+        inv_msg += f"Market akan selalu ada hari Senin.\n"
+        inv_msg += f"\n📊 Dashboard: <a href=\"{DASHBOARD_URL}\">KRX Dashboard</a>\n"
+        inv_msg += f"\n#WeeklyRecap #KRX"
+
+        if inv["telegram_id"]:
+            send_telegram_dm(inv["telegram_id"], inv_msg)
+            sent_count += 1
+
+    logger.info(f"[Telegram] Weekly recap sent to {sent_count} investors ✓")
     return success
 
 
 def send_daily_snapshot(firebase_db):
     """
-    Daily Snapshot — Investor Only
+    Daily Snapshot — Investor Only (Green Flag Only)
     Detail per investor dengan breakdown akun dan profit hari ini.
-    Hanya kirim untuk users dengan role === 'investor'.
+    Hanya kirim untuk users dengan role === 'investor' dan account_flag === 'green'.
     """
     date_str = get_date_string()
     today = date.today().strftime("%Y-%m-%d")
 
     try:
-        users_ref = firebase_db.reference("users")
-        all_users = users_ref.get() or {}
         acc_ref = firebase_db.reference("account_data")
         all_accounts = acc_ref.get() or {}
     except Exception as e:
         logger.error(f"[Daily Snapshot] Error fetching data: {e}")
         return False
 
-    investors = []
+    # Get only green flag investors
+    investors = get_investors_by_flag(firebase_db, filter_flag="green")
 
-    for uid, user_data in all_users.items():
-        if (user_data or {}).get("role") != "investor":
-            continue
+    if not investors:
+        logger.info("[Daily Snapshot] No green-flag investor activity today. Skipping.")
+        return True
 
-        subscriptions = (user_data or {}).get("subscriptions")
-        if not subscriptions:
-            continue
+    # Build message for Admin Group (Topic: Logs)
+    msg = f"📊 <b>DAILY SNAPSHOT — INVESTOR REPORT</b>\n"
+    msg += f"📅 {date_str}\n"
+    msg += f"━━━━━━━━━━━━━━━━━━━━━━\n"
 
-        investor_info = {
-            "uid": uid,
-            "name": user_data.get("fullName") or user_data.get("email") or uid,
-            "vps_list": [],
-        }
+    has_activity = False
 
-        for vps_key, vps_data in subscriptions.items():
-            accounts = (vps_data or {}).get("accounts")
-            if not accounts:
-                continue
+    for inv in investors:
+        inv_vps_list = []
+        inv_total_profit = 0
+        inv_total_fee = 0
+        inv_total_balance = 0
 
+        for vps_key, vps_data in (inv["subscriptions"] or {}).items():
+            accounts = (vps_data or {}).get("accounts") or {}
             vps_info = {
                 "vps_name": vps_data.get("vps_name") or vps_key,
                 "accounts": [],
@@ -402,7 +546,6 @@ def send_daily_snapshot(firebase_db):
                 daily_hist = (acc_full or {}).get("daily_history", {}).get(today)
 
                 if not daily_hist:
-                    # Skip if no trading activity today
                     continue
 
                 profit_share = acc_info.get("profit_share_percent") or acc_info.get("profit_share") or 30
@@ -410,12 +553,15 @@ def send_daily_snapshot(firebase_db):
                 growth = daily_hist.get("daily_growth_percent") or daily_hist.get("growth") or 0
                 lots = daily_hist.get("daily_lots") or daily_hist.get("lot") or 0
 
-                # Get balance
                 balance = (acc_full.get("realtime_stats") or {}).get("balance") or 0
                 if not balance:
                     balance = (acc_full.get("metadata") or {}).get("balance") or 0
 
                 fee = max(0, profit * (profit_share / 100))
+
+                inv_total_profit += profit
+                inv_total_fee += fee
+                inv_total_balance += balance
 
                 vps_info["accounts"].append({
                     "acc_num": acc_num,
@@ -428,37 +574,21 @@ def send_daily_snapshot(firebase_db):
                 })
 
             if vps_info["accounts"]:
-                investor_info["vps_list"].append(vps_info)
+                inv_vps_list.append(vps_info)
 
-        if investor_info["vps_list"]:
-            investors.append(investor_info)
+        if not inv_vps_list:
+            continue
 
-    if not investors:
-        logger.info("[Daily Snapshot] No investor activity today. Skipping.")
-        return True
+        has_activity = True
 
-    # Build message
-    msg = f"📊 <b>DAILY SNAPSHOT — INVESTOR REPORT</b>\n"
-    msg += f"📅 {date_str}\n"
-    msg += f"━━━━━━━━━━━━━━━━━━━━━━\n"
-
-    for inv in investors:
         msg += f"\n👤 <b>INVESTOR: {inv['name']}</b>\n"
 
-        total_profit = 0
-        total_fee = 0
-        total_balance = 0
-
-        for vps in inv["vps_list"]:
+        for vps in inv_vps_list:
             msg += f"├ 🖥️ VPS: {vps['vps_name']}\n"
 
             for idx, acc in enumerate(vps["accounts"]):
-                is_last = (idx == len(vps["accounts"]) - 1) and (vps == inv["vps_list"][-1])
+                is_last = (idx == len(vps["accounts"]) - 1) and (vps == inv_vps_list[-1])
                 prefix = "│  └" if is_last else "│  ├"
-                total_profit += acc["profit"]
-                total_fee += acc["fee"]
-                total_balance += acc["balance"]
-
                 sign = "+" if acc["profit"] >= 0 else ""
                 gsign = "+" if acc["growth"] >= 0 else ""
 
@@ -467,8 +597,12 @@ def send_daily_snapshot(firebase_db):
                 msg += f"{'   ' if is_last else '│  │'}  ├ Profit Hari Ini: {sign}${format_currency(acc['profit'])} ({gsign}{format_percent(acc['growth'])}%)\n"
                 msg += f"{'   ' if is_last else '│  │'}  └ Fee ({int(acc['profit_share'])}%): ${format_currency(acc['fee'])}\n"
 
-        ts = "+" if total_profit >= 0 else ""
-        msg += f"└ Total Profit: {ts}${format_currency(total_profit)} | Total Fee: ${format_currency(total_fee)}\n"
+        ts = "+" if inv_total_profit >= 0 else ""
+        msg += f"└ Total Profit: {ts}${format_currency(inv_total_profit)} | Total Fee: ${format_currency(inv_total_fee)}\n"
+
+    if not has_activity:
+        logger.info("[Daily Snapshot] No green-flag investor activity today. Skipping.")
+        return True
 
     msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n"
     msg += get_random_quote()
@@ -481,10 +615,16 @@ def send_daily_snapshot(firebase_db):
     return success
 
 
-def send_vps_billing_warning(payload):
+def send_vps_billing_warning(payload, firebase_db=None):
+    """
+    VPS Billing Warning — H-3
+    Kirim ke: Admin Group (Topic: Logs) + Investor DM (All Flags)
+    """
     date_str = get_date_string()
     vps_name = payload.get("vps_name") or payload.get("accountNumber") or "N/A"
     investor = payload.get("user_id") or "N/A"
+    investor_tg_id = payload.get("telegram_id") or ""
+    account_flag = payload.get("account_flag", "green")
     monthly_cost = payload.get("amount") or 0
     due_date = payload.get("due_date") or "N/A"
     days_remaining = payload.get("days_remaining") or 3
@@ -499,19 +639,31 @@ def send_vps_billing_warning(payload):
     msg += f"├ 📅 Jatuh Tempo   : {due_date}\n"
     msg += f"└ ⏳ Sisa Waktu    : {days_remaining} hari lagi\n"
     msg += f"\n📋 Status: ⚠️ WARNING — Segera lakukan pembayaran\n"
-
     msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n"
     msg += f"#VPSBilling #Warning\n"
 
+    # Send to Admin Group
     success = send_telegram_message(msg, TOPIC_LOGS)
+
+    # Send DM to investor (All Flags)
+    if investor_tg_id:
+        send_telegram_dm(investor_tg_id, msg)
+        logger.info(f"[Telegram] VPS billing warning DM sent to {investor_tg_id} ✓")
+
     logger.info(f"[Telegram] VPS billing warning sent: {success}")
     return success
 
 
 def send_vps_billing_urgent(payload):
+    """
+    VPS Billing Urgent — H-1 / Overdue
+    Kirim ke: Admin Group (Topic: Logs) + Investor DM (All Flags) + Super Admin DM
+    """
     date_str = get_date_string()
     vps_name = payload.get("vps_name") or payload.get("accountNumber") or "N/A"
     investor = payload.get("user_id") or "N/A"
+    investor_tg_id = payload.get("telegram_id") or ""
+    account_flag = payload.get("account_flag", "green")
     monthly_cost = payload.get("amount") or 0
     due_date = payload.get("due_date") or "N/A"
     days_remaining = payload.get("days_remaining") or 1
@@ -530,11 +682,21 @@ def send_vps_billing_urgent(payload):
     msg += f"\n📋 Status: 🚨 URGENT — Pembayaran harus segera diproses!\n"
     msg += f"\n⚠️ <b>Peringatan:</b> VPS dapat dinonaktifkan jika pembayaran\n"
     msg += f"   tidak diterima sebelum tanggal jatuh tempo.\n"
-
     msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n"
     msg += f"#VPSBilling #Urgent\n"
 
+    # Send to Admin Group
     success = send_telegram_message(msg, TOPIC_LOGS)
+
+    # Send DM to investor (All Flags)
+    if investor_tg_id:
+        send_telegram_dm(investor_tg_id, msg)
+        logger.info(f"[Telegram] VPS billing urgent DM sent to investor {investor_tg_id} ✓")
+
+    # Send DM to Super Admin
+    send_telegram_dm(SUPER_ADMIN_ID, msg)
+    logger.info(f"[Telegram] VPS billing urgent DM sent to super admin ✓")
+
     logger.info(f"[Telegram] VPS billing urgent sent: {success}")
     return success
 
