@@ -18,7 +18,7 @@ import { NextResponse } from "next/server";
 import {
   getQuoteForTrigger,
   getMondayKickoffQuote,
-} from "../../../lib/quotes-pool";
+} from "../../../../lib/quotes-pool";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CONFIGURATION

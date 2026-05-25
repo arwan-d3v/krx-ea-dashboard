@@ -602,7 +602,16 @@ function TreeNode({ node, depth, invoices, role, ...props }) {
         </div>
         <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${node.setupStatus === "completed" ? "bg-emerald-500/10 text-emerald-400" : node.setupStatus === "pending_setup" ? "bg-amber-500/10 text-amber-400" : "bg-slate-500/10 text-slate-400"}`}>{node.setupStatus || "unknown"}</span>
         <span className="px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 text-[10px] font-bold">{node.role}</span>
-        <button onClick={(e) => { e.stopPropagation(); props.onStartEditUser(node.uid, node); }} className="p-1.5 text-blue-400/60 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors" title="Edit User Info"><Edit3 size={13} /></button>
+        <span
+          role="button"
+          tabIndex={0}
+          onClick={(e) => { e.stopPropagation(); props.onStartEditUser(node.uid, node); }}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); props.onStartEditUser(node.uid, node); } }}
+          className="p-1.5 text-blue-400/60 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors cursor-pointer"
+          title="Edit User Info"
+        >
+          <Edit3 size={13} />
+        </span>
       </button>
 
       {expanded && (
