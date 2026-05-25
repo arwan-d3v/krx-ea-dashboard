@@ -722,6 +722,65 @@ def daily_profit_snapshot(firebase_db) -> None:
 
 
 # ============================================================================
+# SECTION 7: TELEGRAM TRIGGER POLLING (NEW)
+# ============================================================================
+
+# Import telegram notifier
+try:
+    from telegram_notifier import dispatch_notification
+    logger.info("[TELEGRAM] Telegram notifier module loaded successfully")
+except ImportError:
+    logger.error("[TELEGRAM] telegram_notifier module not found! Telegram notifications disabled.")
+    dispatch_notification = None
+
+
+def poll_and_notify_triggers(firebase_db) -> None:
+    """
+    Poll system_triggers in Firebase.
+    If any trigger has fired: true, send Telegram notification and reset fired to false.
+    This allows real-time Telegram notifications without relying on browser/frontend.
+    """
+    if dispatch_notification is None:
+        return
+
+    try:
+        triggers_ref = firebase_db.reference("system_triggers")
+        triggers = triggers_ref.get()
+
+        if not triggers:
+            return
+
+        for trigger_name, trigger_data in triggers.items():
+            if not trigger_data or not trigger_data.get("fired"):
+                continue
+
+            # Check if this is a "manual_dashboard" trigger (from UI)
+            source = trigger_data.get("source", "automatic")
+            timestamp = trigger_data.get("timestamp", 0)
+            payload = trigger_data.get("payload")
+
+            logger.info(f"[TELEGRAM POLL] Trigger detected: {trigger_name} (source: {source})")
+
+            # Send Telegram notification
+            success = dispatch_notification(trigger_name, firebase_db, payload)
+
+            if success:
+                # Reset fired flag to prevent duplicate sends
+                firebase_db.reference(f"system_triggers/{trigger_name}").update({
+                    "fired": False,
+                    "telegram_sent": True,
+                    "telegram_sent_at": int(time.time() * 1000),
+                })
+                logger.info(f"[TELEGRAM POLL] Trigger {trigger_name} processed and reset ✓")
+            else:
+                logger.warning(f"[TELEGRAM POLL] Failed to send Telegram for {trigger_name}")
+                # Don't reset fired flag so it can retry next cycle
+
+    except Exception as e:
+        logger.error(f"[TELEGRAM POLL] Error polling triggers: {e}")
+
+
+# ============================================================================
 # MAIN
 # ============================================================================
 
@@ -803,6 +862,10 @@ def main():
 
     while True:
         schedule.run_pending()
+        
+        # Poll Firebase triggers for Telegram notifications (every cycle = 30s)
+        poll_and_notify_triggers(fb_db)
+        
         time.sleep(30)
 
 

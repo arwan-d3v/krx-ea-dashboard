@@ -8,10 +8,11 @@ import {
   Clock, Timer, CheckCircle2, XCircle, AlertTriangle,
   Activity, Play, Pause, RefreshCw, History, Server,
   CalendarDays, ChevronRight, Radio, Zap, Wifi, WifiOff,
-  HardDrive, ShieldCheck, RotateCcw
+  HardDrive, ShieldCheck, RotateCcw, Send, ZapOff, Bell, X,
+  Sun, Moon, Briefcase, BarChart3, Calendar, FileText, TrendingUp
 } from "lucide-react";
 import { db, auth } from "../../lib/firebase";
-import { ref, onValue, query, limitToLast } from "firebase/database";
+import { ref, onValue, query, limitToLast, set } from "firebase/database";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../context/AuthContext";
 
@@ -183,6 +184,20 @@ const getStatusStyle = (status) => {
   }
 };
 
+const getJobDescription = (triggerName) => {
+  const descriptions = {
+    morning_prep: "Morning prep & Monday kickoff greeting + EA status report",
+    daily_report: "Daily trading performance report, profit %, all-time gain",
+    weekly_recap: "Weekly profit recap (Mon-Fri) + weekend rest message",
+    vps_billing_check: "VPS Billing Check + Invoice",
+    vps_expiry_check: "VPS Expiry Check",
+    bot_start_detect: "Bot Start Date Detection",
+    profit_share_invoice: "Profit Share Invoice Generation",
+    daily_snapshot: "Daily Profit Snapshot",
+  };
+  return descriptions[triggerName] || triggerName.replace(/_/g, " ");
+};
+
 // ============================================================================
 // SECTION 4: MAIN CRON MANAGER COMPONENT
 // ============================================================================
@@ -198,13 +213,131 @@ export default function CronManager() {
   const [triggers, setTriggers] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [gmt8Time, setGmt8Time] = useState("");
+  const [currentTimestamp, setCurrentTimestamp] = useState(0);
+  const [notification, setNotification] = useState(null);
+  const [triggering, setTriggering] = useState(null);
 
-  // GMT+8 Live Clock
+  // Manual Trigger Options
+  const triggerOptions = [
+    {
+      id: "morning_prep",
+      name: "Morning Prep",
+      desc: "Morning prep & Monday kickoff greeting + EA status report",
+      icon: Sun,
+      color: "orange",
+      schedule: "08:45 GMT+8",
+    },
+    {
+      id: "daily_report",
+      name: "Daily Report",
+      desc: "Daily trading performance report, profit %, all-time gain",
+      icon: BarChart3,
+      color: "blue",
+      schedule: "22:45 GMT+8",
+    },
+    {
+      id: "daily_snapshot",
+      name: "Daily Snapshot",
+      desc: "Daily Profit Snapshot",
+      icon: Briefcase,
+      color: "purple",
+      schedule: "23:00 GMT+8",
+    },
+    {
+      id: "weekly_recap",
+      name: "Weekly Recap",
+      desc: "Weekly profit recap (Mon-Fri) + weekend rest message",
+      icon: Calendar,
+      color: "green",
+      schedule: "Friday 23:05 GMT+8",
+    },
+    {
+      id: "vps_billing_check",
+      name: "VPS Billing",
+      desc: "VPS Billing Check + Invoice",
+      icon: FileText,
+      color: "red",
+      schedule: "1st of month 09:00",
+    },
+    {
+      id: "vps_expiry_check",
+      name: "VPS Expiry",
+      desc: "VPS Expiry Check",
+      icon: TrendingUp,
+      color: "yellow",
+      schedule: "Monday 09:00",
+    },
+    {
+      id: "profit_share_invoice",
+      name: "Profit Share",
+      desc: "Profit Share Invoice Generation",
+      icon: Zap,
+      color: "cyan",
+      schedule: "Last Friday 23:30",
+    },
+  ];
+
+  // Handle Manual Trigger
+  const handleManualTrigger = async (triggerId) => {
+    setTriggering(triggerId);
+    try {
+      const trigger = triggerOptions.find((t) => t.id === triggerId);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      const timestamp = Date.now();
+      const d = new Date(timestamp);
+      const gmt8Time = d.toLocaleString("en-GB", {
+        timeZone: "Asia/Makassar",
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+      });
+
+      const triggerRef = ref(db, `system_triggers/${triggerId}`);
+      await set(triggerRef, {
+        fired: true,
+        timestamp: timestamp,
+        trigger_name: triggerId,
+        gmt8_time: gmt8Time + " GMT+8",
+        source: "manual_dashboard",
+        fired_by: user?.email || "super_admin",
+      });
+
+      setNotification({
+        type: "success",
+        title: "Trigger Sent!",
+        message: `${trigger.name} has been triggered successfully.`,
+        icon: trigger.icon,
+        color: trigger.color,
+      });
+
+      setTimeout(() => setNotification(null), 5000);
+    } catch (error) {
+      console.error("Error triggering:", error);
+      setNotification({
+        type: "error",
+        title: "Trigger Failed",
+        message: error.message || "Failed to trigger the task.",
+        icon: XCircle,
+        color: "red",
+      });
+      setTimeout(() => setNotification(null), 5000);
+    } finally {
+      setTriggering(null);
+    }
+  };
+
+  // GMT+8 Live Clock & Timestamp
   useEffect(() => {
     const tick = () => {
-      const now = new Date();
+      const now = Date.now();
+      setCurrentTimestamp(now);
+      const d = new Date(now);
       setGmt8Time(
-        now.toLocaleTimeString("en-US", {
+        d.toLocaleTimeString("en-US", {
           timeZone: "Asia/Makassar",
           hour: "2-digit",
           minute: "2-digit",
@@ -239,22 +372,44 @@ export default function CronManager() {
       })
     );
 
-    // 2. Cron Jobs
-    const cjRef = ref(db, "cron_jobs");
+    // 2. Cron Jobs - Using system_triggers for job status display
+    const cjRef = ref(db, "system_triggers");
     unsubs.push(
       onValue(cjRef, (snap) => {
-        setCronJobs(snap.val() || {});
+        const data = snap.val() || {};
+        // Transform system_triggers to cronJobs format
+        const jobs = {};
+        Object.keys(data).forEach((triggerName) => {
+          const trigger = data[triggerName];
+          jobs[triggerName] = {
+            name: triggerName.replace(/_/g, " "),
+            status: trigger.fired ? "running" : "idle",
+            last_run: trigger.timestamp,
+            run_count: trigger.fired ? 1 : 0,
+            action: trigger.trigger_name || triggerName,
+            description: getJobDescription(triggerName),
+          };
+        });
+        setCronJobs(jobs);
         setIsLoading(false);
       })
     );
 
-    // 3. Triggers (last 50)
-    const tRef = query(ref(db, "cron_triggers"), limitToLast(50));
+    // 3. Triggers (last 50) - Using system_triggers for trigger history
+    const tRef = query(ref(db, "system_triggers"), limitToLast(50));
     unsubs.push(
       onValue(tRef, (snap) => {
         const data = snap.val() || {};
         const arr = Object.keys(data)
-          .map((k) => ({ id: k, ...data[k] }))
+          .map((k) => ({
+            id: k,
+            job_name: k,
+            trigger_name: data[k].trigger_name || k,
+            status: data[k].fired ? "completed" : "idle",
+            triggered_at: data[k].timestamp,
+            gmt8_time: data[k].gmt8_time,
+            result: data[k].payload || {},
+          }))
           .sort((a, b) => (b.triggered_at || 0) - (a.triggered_at || 0));
         setTriggers(arr);
       })
@@ -291,13 +446,11 @@ export default function CronManager() {
       </div>
     );
 
-  // ========================================================================
-  // HEARTBEAT STATUS CHECK
-  // ========================================================================
+  // Compute isOnline directly (derived state - no need for separate state)
   const isOnline =
     heartbeat &&
     heartbeat.status === "online" &&
-    Date.now() - (heartbeat.last_ping || 0) < 180000; // 3 min timeout
+    currentTimestamp - (heartbeat.last_ping || 0) < 180000; // 3 min timeout
 
   const jobEntries = Object.entries(cronJobs);
   const statusLabelMap = {
@@ -356,6 +509,40 @@ export default function CronManager() {
   // ========================================================================
   return (
     <div className="p-4 md:p-8 space-y-6 max-w-7xl mx-auto font-sans transition-colors duration-300">
+      {/* NOTIFICATION TOAST */}
+      {notification && (
+        <div className={`fixed top-4 right-4 z-50 max-w-sm w-full p-4 rounded-2xl border shadow-lg transition-all duration-300 transform ${
+          notification.type === 'success'
+            ? 'bg-green-500/10 border-green-500/40'
+            : 'bg-red-500/10 border-red-500/40'
+        }`}>
+          <div className="flex items-start gap-3">
+            <div className={`p-2 rounded-xl ${
+              notification.type === 'success'
+                ? 'bg-green-500/20 text-green-500'
+                : 'bg-red-500/20 text-red-500'
+            }`}>
+              {notification.icon && <notification.icon size={20} />}
+            </div>
+            <div className="flex-1 min-w-0">
+              <h4 className={`font-bold text-sm ${
+                notification.type === 'success' ? 'text-green-500' : 'text-red-500'
+              }`}>
+                {notification.title}
+              </h4>
+              <p className="text-xs text-[var(--muted-foreground)] mt-0.5">
+                {notification.message}
+              </p>
+            </div>
+            <button
+              onClick={() => setNotification(null)}
+              className="p-1 rounded hover:bg-[var(--muted)]/50 transition-colors"
+            >
+              <X size={16} className="text-[var(--muted-foreground)]" />
+            </button>
+          </div>
+        </div>
+      )}
       {/* HEADER */}
       <div className="bg-[var(--card-bg)] border border-[var(--card-border)] rounded-3xl p-6 md:p-8 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 shadow-sm relative overflow-hidden">
         <div className="z-10 w-full lg:w-auto">
@@ -474,6 +661,85 @@ export default function CronManager() {
           </div>
         </div>
       )}
+
+      {/* MANUAL TRIGGER SECTION */}
+      <div className="bg-[var(--card-bg)] rounded-3xl border border-[var(--card-border)] p-6 shadow-sm">
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="font-bold text-sm text-[var(--foreground)] flex items-center gap-2">
+            <Zap size={16} className="text-yellow-500" /> Manual Trigger
+          </h3>
+          <span className="text-[10px] text-[var(--muted-foreground)] uppercase tracking-widest">
+            Click to trigger now
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {triggerOptions.map((trigger) => {
+            const IconComponent = trigger.icon;
+            const isTriggering = triggering === trigger.id;
+            const colorMap = {
+              orange: "bg-orange-500/10 text-orange-500 border-orange-500/40",
+              blue: "bg-blue-500/10 text-blue-500 border-blue-500/40",
+              purple: "bg-purple-500/10 text-purple-500 border-purple-500/40",
+              green: "bg-green-500/10 text-green-500 border-green-500/40",
+              red: "bg-red-500/10 text-red-500 border-red-500/40",
+              yellow: "bg-yellow-500/10 text-yellow-500 border-yellow-500/40",
+              cyan: "bg-cyan-500/10 text-cyan-500 border-cyan-500/40",
+            };
+            const bgColorMap = {
+              orange: "bg-orange-500/20",
+              blue: "bg-blue-500/20",
+              purple: "bg-purple-500/20",
+              green: "bg-green-500/20",
+              red: "bg-red-500/20",
+              yellow: "bg-yellow-500/20",
+              cyan: "bg-cyan-500/20",
+            };
+            return (
+              <button
+                key={trigger.id}
+                onClick={() => handleManualTrigger(trigger.id)}
+                disabled={isTriggering}
+                className={`group relative flex flex-col gap-3 p-5 rounded-2xl border transition-all duration-200 hover:scale-[1.02] hover:shadow-lg active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 ${
+                  colorMap[trigger.color]
+                }`}
+              >
+                {/* Trigger Icon */}
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`p-2.5 rounded-xl ${bgColorMap[trigger.color]}`}
+                  >
+                    {isTriggering ? (
+                      <RefreshCw size={20} className="animate-spin" />
+                    ) : (
+                      <IconComponent size={20} />
+                    )}
+                  </div>
+                  <div className="flex-1 text-left">
+                    <h4 className="font-bold text-sm">{trigger.name}</h4>
+                    <p className="text-[9px] opacity-70 mt-0.5">
+                      {trigger.schedule}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Description */}
+                <p className="text-[10px] opacity-70 text-left leading-relaxed">
+                  {trigger.desc}
+                </p>
+
+                {/* Action Label */}
+                <div className="flex items-center gap-2 mt-auto pt-2 border-t border-current/10">
+                  <Send size={10} className="opacity-50" />
+                  <span className="text-[9px] font-bold uppercase tracking-widest opacity-50">
+                    {isTriggering ? "Sending..." : "Trigger Now"}
+                  </span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
       {/* JOB STATUS GRID */}
       <div className="bg-[var(--card-bg)] rounded-3xl border border-[var(--card-border)] p-6 shadow-sm">
