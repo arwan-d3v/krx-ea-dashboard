@@ -110,16 +110,47 @@ function AnalyticsContent({ user, role }) {
     return [];
   }, [userData, accountData, groupsData, role]);
 
-  // Load daily_history from unified account_data/{accNum}/daily_history
+  // Load snapshots from account_data/{accNum}/snapshots (same as stable analytics)
+  // Process timestamp keys to date-keyed data for calendar display
   useEffect(() => {
     if (!selectedAccount) return;
     const unsub = onValue(
-      ref(db, `account_data/${selectedAccount}/daily_history`),
+      ref(db, `account_data/${selectedAccount}/snapshots`),
       (snap) => {
         if (snap.exists()) {
+          const snapshots = snap.val();
+          const dailyData = {};
+          
+          // Convert timestamp keys to date keys (same logic as stable analytics)
+          Object.keys(snapshots).forEach((tsKey) => {
+            let timeMs = parseInt(tsKey);
+            if (isNaN(timeMs)) return;
+            
+            // If EA sends SECONDS format (10 digit), multiply by 1000
+            if (timeMs < 10000000000) {
+              timeMs = timeMs * 1000;
+            }
+            
+            // Add 8 hours for WITA / GMT+8 conversion
+            const exactDateWITA = new Date(timeMs + 28800000);
+            const y = exactDateWITA.getUTCFullYear();
+            const m = String(exactDateWITA.getUTCMonth() + 1).padStart(2, "0");
+            const d = String(exactDateWITA.getUTCDate()).padStart(2, "0");
+            const dateKey = `${y}-${m}-${d}`;
+            
+            // Use same property names as stable analytics
+            const data = snapshots[tsKey];
+            dailyData[dateKey] = {
+              daily_profit: data.daily_profit || data.profit || 0,
+              lot_volume: data.daily_lots || data.lot || data.lots || 0,
+              percentage_growth: data.daily_growth_percent || data.growth || data.growth_percent || 0,
+              balance: data.balance || 0,
+            };
+          });
+          
           setProfitHistory((prev) => ({
             ...prev,
-            [selectedAccount]: snap.val(),
+            [selectedAccount]: dailyData,
           }));
         }
       }
@@ -133,10 +164,13 @@ function AnalyticsContent({ user, role }) {
     return () => clearTimeout(t);
   }, []);
 
-  // Auto-select first account
+  // Auto-select first account (deferred to avoid cascading setState in effect)
   useEffect(() => {
     if (!selectedAccount && ownedAccounts.length > 0) {
-      setSelectedAccount(ownedAccounts[0]);
+      const timer = setTimeout(() => {
+        setSelectedAccount(ownedAccounts[0]);
+      }, 0);
+      return () => clearTimeout(timer);
     }
   }, [ownedAccounts, selectedAccount]);
 
@@ -273,7 +307,7 @@ function AnalyticsContent({ user, role }) {
           <AlertTriangle size={48} className="mx-auto text-amber-500 mb-4" />
           <h2 className="text-xl font-bold text-[var(--foreground)] mb-2">No EA Accounts</h2>
           <p className="text-sm text-[var(--muted-foreground)]">
-            You don't own any EA accounts yet. Please contact your admin for account assignment.
+            {"You don't own any EA accounts yet. Please contact your admin for account assignment."}
           </p>
         </div>
       </div>
