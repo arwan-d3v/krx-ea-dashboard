@@ -199,7 +199,7 @@ function AdminSubscriptionView({ user, role }) {
   const [vpsEditForm, setVpsEditForm] = useState({ vpsName: "", monthlyCost: "", billingCycleDate: "", expiryDate: "", status: "active" });
   const [accEditForm, setAccEditForm] = useState({ profitShare: 30, botStartDate: "" });
   const [newVpsForm, setNewVpsForm] = useState({ vpsName: "", monthlyCost: "", billingCycleDate: "", expiryDate: "" });
-  const [newAccForm, setNewAccForm] = useState({ accountNumber: "", profitShare: 30, botStartDate: new Date().toISOString().split("T")[0] });
+  const [newAccForm, setNewAccForm] = useState({ accountNumber: "", profitShare: 30, botStartDate: new Date().toISOString().split("T")[0], account_flag: "green" });
 
   const [adminManagedUids, setAdminManagedUids] = useState(role === "super_admin" ? null : undefined);
 
@@ -362,14 +362,41 @@ function AdminSubscriptionView({ user, role }) {
     if (!newAccForm.accountNumber.trim()) { toast.error("Account number required"); return; }
     try {
       const accNum = newAccForm.accountNumber.trim();
+      const userData = users[uid] || {};
+      const vpsData = userData.subscriptions?.[vpsKey] || {};
+      
       await set(ref(db, `users/${uid}/subscriptions/${vpsKey}/accounts/${accNum}`), {
         profit_share_percent: Number(newAccForm.profitShare),
         bot_start_date: newAccForm.botStartDate,
         last_invoiced_date: null,
+        account_flag: newAccForm.account_flag,
       });
       await set(ref(db, `users/${uid}/owned_accounts/${accNum}`), true);
+      
+      // Trigger Telegram notification
+      try {
+        await fetch("/api/telegram/notify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            trigger: "new_account_added",
+            payload: {
+              investor_name: userData.fullName || uid,
+              investor_email: userData.email || "",
+              telegram_id: userData.telegramId || "",
+              account_flag: newAccForm.account_flag,
+              account_number: accNum,
+              vps_name: vpsData.vps_name || vpsKey,
+              profit_share_percent: Number(newAccForm.profitShare),
+            },
+          }),
+        });
+      } catch (notifyErr) {
+        console.warn("Telegram notify failed:", notifyErr);
+      }
+      
       toast.success(`Account ${accNum} added`);
-      setNewAccForm({ accountNumber: "", profitShare: 30, botStartDate: new Date().toISOString().split("T")[0] });
+      setNewAccForm({ accountNumber: "", profitShare: 30, botStartDate: new Date().toISOString().split("T")[0], account_flag: "green" });
       setAddingAccForVps(null);
     } catch (e) { toast.error("Failed to add account: " + e.message); }
   };
@@ -681,13 +708,18 @@ function VpsTreeNode({ vps, uid, depth, invoices, role, allVpsList, ...props }) 
           {props.addingAccForVps?.uid === uid && props.addingAccForVps?.vpsKey === vps.vpsKey ? (
             <div className="ml-4 p-3 bg-blue-500/5 border border-blue-500/20 rounded-xl space-y-2">
               <p className="text-[9px] font-bold text-blue-400 uppercase tracking-wider">Add EA Account to {vps.vpsName}</p>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-4 gap-2">
                 <input type="text" placeholder="Account #" value={props.newAccForm.accountNumber} onChange={(e) => props.setNewAccForm(p => ({ ...p, accountNumber: e.target.value }))} className="bg-[var(--background)] border border-blue-500/30 text-[var(--foreground)] text-xs rounded-lg px-2 py-2 outline-none focus:ring-1 focus:ring-blue-500" autoFocus />
                 <div className="relative"><Percent size={10} className="absolute left-2 top-2.5 text-blue-400" /><input type="number" min="0" max="100" placeholder="30" value={props.newAccForm.profitShare} onChange={(e) => props.setNewAccForm(p => ({ ...p, profitShare: e.target.value }))} className="w-full bg-[var(--background)] border border-blue-500/30 text-[var(--foreground)] text-xs rounded-lg pl-6 pr-2 py-2 outline-none focus:ring-1 focus:ring-blue-500" /></div>
                 <input type="date" value={props.newAccForm.botStartDate} onChange={(e) => props.setNewAccForm(p => ({ ...p, botStartDate: e.target.value }))} className="bg-[var(--background)] border border-blue-500/30 text-[var(--foreground)] text-xs rounded-lg px-2 py-2 outline-none focus:ring-1 focus:ring-blue-500 [color-scheme:dark]" />
+                <select value={props.newAccForm.account_flag} onChange={(e) => props.setNewAccForm(p => ({ ...p, account_flag: e.target.value }))} className="bg-[var(--background)] border border-blue-500/30 text-[var(--foreground)] text-xs rounded-lg px-2 py-2 outline-none focus:ring-1 focus:ring-blue-500">
+                  <option value="green">🟢 Investor</option>
+                  <option value="yellow">🟡 Admin</option>
+                  <option value="red">🔴 Tester</option>
+                </select>
               </div>
               <div className="flex gap-2 justify-end">
-                <button onClick={() => { props.setAddingAccForVps(null); props.setNewAccForm({ accountNumber: "", profitShare: 30, botStartDate: new Date().toISOString().split("T")[0] }); }} className="text-xs text-slate-400 hover:text-white px-2 py-1">Cancel</button>
+                <button onClick={() => { props.setAddingAccForVps(null); props.setNewAccForm({ accountNumber: "", profitShare: 30, botStartDate: new Date().toISOString().split("T")[0], account_flag: "green" }); }} className="text-xs text-slate-400 hover:text-white px-2 py-1">Cancel</button>
                 <button onClick={() => props.onAddAccount(uid, vps.vpsKey)} className="text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded-lg flex items-center gap-1"><Save size={10} /> Add</button>
               </div>
             </div>

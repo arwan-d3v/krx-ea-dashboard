@@ -113,6 +113,28 @@ def send_telegram_message(text, thread_id=None):
         return False
 
 
+def send_telegram_dm(chat_id, text):
+    """Send private DM to a specific user via Telegram bot."""
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": True,
+    }
+    try:
+        resp = requests.post(url, json=payload, timeout=30)
+        data = resp.json()
+        if not data.get("ok"):
+            logger.error(f"[Telegram DM] Error to {chat_id}: {data.get('description')}")
+            return False
+        logger.info(f"[Telegram DM] Message sent to {chat_id} ✓")
+        return True
+    except Exception as e:
+        logger.error(f"[Telegram DM] Fetch error to {chat_id}: {e}")
+        return False
+
+
 def get_random_quote():
     import random
     q = random.choice(WISE_QUOTES)
@@ -646,8 +668,123 @@ def send_vps_expiry_check(firebase_db):
 
 
 # ============================================================================
-# DISPATCHER
+# SMART ROUTING HELPER
 # ============================================================================
+
+def route_notification(message, investor_tg_id=None, account_flag="green"):
+    """
+    Route notification based on account flag:
+      - green  : Investor (DM) + Admin Group (info)
+      - yellow : Private Admin DM only
+      - red    : Private Admin DM only
+    """
+    if account_flag == "green":
+        # Green: Investor + Admin Group (info)
+        if investor_tg_id:
+            send_telegram_dm(investor_tg_id, message)
+        send_telegram_message(f"ℹ️ Invoice/notification sent to investor [{account_flag.upper()}]", TOPIC_LOGS)
+    else:
+        # Yellow & Red: Private Admin DM only
+        send_telegram_dm(SUPER_ADMIN_ID, message)
+
+
+# ============================================================================
+# NEW HANDLERS
+# ============================================================================
+
+def send_onboarding_submission(payload):
+    """Trigger: New onboarding submission from investor."""
+    date_str = get_date_string()
+    investor_name = payload.get("investor_name") or payload.get("fullName") or "N/A"
+    investor_email = payload.get("investor_email") or payload.get("email") or "N/A"
+    investor_tg_id = payload.get("telegram_id") or ""
+    account_flag = payload.get("account_flag", "green")
+    submission_data = payload.get("submission_data") or {}
+
+    msg = f"🆕 <b>NEW ONBOARDING SUBMISSION</b>\n"
+    msg += f"📅 {date_str}\n"
+    msg += f"━━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += f"\n👤 <b>INVESTOR INFO</b>\n"
+    msg += f"├ 📌 Nama        : {investor_name}\n"
+    msg += f"├ 📧 Email       : {investor_email}\n"
+    msg += f"├ 🏷️ Flag        : {account_flag.upper()}\n"
+
+    if submission_data:
+        msg += f"\n📋 <b>SUBMISSION DETAILS</b>\n"
+        for key, val in submission_data.items():
+            label = key.replace("_", " ").title()
+            msg += f"├ {label}: {val}\n"
+
+    msg += f"\n🔗 Silakan review di dashboard untuk approve/reject.\n"
+    msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += f"📊 Dashboard: <a href=\"{DASHBOARD_URL}/onboarding\">Onboarding Page</a>\n"
+    msg += f"\n#Onboarding #NewSubmission\n"
+
+    route_notification(msg, investor_tg_id, account_flag)
+    logger.info(f"[Telegram] Onboarding submission sent (flag={account_flag})")
+    return True
+
+
+def send_new_account_added(payload):
+    """Trigger: New MT5 account added to investor subscription."""
+    date_str = get_date_string()
+    investor_name = payload.get("investor_name") or payload.get("fullName") or "N/A"
+    investor_email = payload.get("investor_email") or payload.get("email") or "N/A"
+    investor_tg_id = payload.get("telegram_id") or ""
+    account_flag = payload.get("account_flag", "green")
+    account_number = payload.get("account_number") or payload.get("acc_num") or "N/A"
+    vps_name = payload.get("vps_name") or "N/A"
+    profit_share = payload.get("profit_share_percent") or payload.get("profit_share") or 30
+
+    msg = f"🆕 <b>NEW ACCOUNT ADDED</b>\n"
+    msg += f"📅 {date_str}\n"
+    msg += f"━━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += f"\n👤 <b>INVESTOR INFO</b>\n"
+    msg += f"├ 📌 Nama          : {investor_name}\n"
+    msg += f"├ 📧 Email         : {investor_email}\n"
+    msg += f"├ 🏷️ Flag          : {account_flag.upper()}\n"
+    msg += f"\n🖥️ <b>ACCOUNT INFO</b>\n"
+    msg += f"├ 💰 Account No    : {account_number}\n"
+    msg += f"├ 🖥️ VPS           : {vps_name}\n"
+    msg += f"└ 📊 Profit Share  : {int(profit_share)}%\n"
+
+    msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += f"📊 Dashboard: <a href=\"{DASHBOARD_URL}/subscription-area\">Subscription Area</a>\n"
+    msg += f"\n#NewAccount #AccountAdded\n"
+
+    route_notification(msg, investor_tg_id, account_flag)
+    logger.info(f"[Telegram] New account added sent (flag={account_flag})")
+    return True
+
+
+def send_profit_share_notification(payload):
+    date_str = get_date_string()
+    invoices_generated = payload.get("invoices_generated") or 0
+    period = payload.get("period") or "N/A"
+    account_flag = payload.get("account_flag", "green")
+    investor_tg_id = payload.get("telegram_id") or ""
+
+    msg = f"💰 <b>PROFIT SHARE INVOICE GENERATED</b>\n"
+    msg += f"📅 {date_str}\n"
+    msg += f"━━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += f"\n📋 <b>RINGKASAN PROFIT SHARE</b>\n"
+    msg += f"├ 📅 Periode       : {period}\n"
+    msg += f"├ 📊 Invoice Dibuat: {invoices_generated} invoice\n"
+    msg += f"├ 🏷️ Flag          : {account_flag.upper()}\n"
+    msg += f"└ ⏳ Status        : Pending — menunggu pembayaran\n"
+    msg += f"\n📋 Semua invoice telah tersimpan di dashboard.\n"
+    msg += f"Silakan cek Subscription Area untuk detail lengkap.\n"
+
+    msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += get_random_quote()
+    msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += f"📊 Dashboard: <a href=\"{DASHBOARD_URL}/subscription-area\">Subscription Area</a>\n"
+    msg += f"\n#ProfitShare #Invoice\n"
+
+    route_notification(msg, investor_tg_id, account_flag)
+    logger.info(f"[Telegram] Profit share notification sent (flag={account_flag})")
+    return True
+
 
 def dispatch_notification(trigger_name, firebase_db, payload=None):
     """
@@ -666,6 +803,8 @@ def dispatch_notification(trigger_name, firebase_db, payload=None):
         "vps_expiry_check": lambda: send_vps_expiry_check(firebase_db),
         "profit_share_invoice": lambda: send_profit_share_notification(payload or {}),
         "profit_share_invoice_ready": lambda: send_profit_share_notification(payload or {}),
+        "new_onboarding_submission": lambda: send_onboarding_submission(payload or {}),
+        "new_account_added": lambda: send_new_account_added(payload or {}),
     }
 
     handler = handlers.get(trigger_name)
