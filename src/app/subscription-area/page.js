@@ -191,6 +191,7 @@ function AdminSubscriptionView({ user, role }) {
   // CRUD editing state
   const [editingVps, setEditingVps] = useState(null); // {uid, vpsKey}
   const [editingAccount, setEditingAccount] = useState(null); // {uid, vpsKey, accNum}
+  const [editingUser, setEditingUser] = useState(null); // uid
   const [addingVpsForUser, setAddingVpsForUser] = useState(null); // uid
   const [addingAccForVps, setAddingAccForVps] = useState(null); // {uid, vpsKey}
   const [movingAccount, setMovingAccount] = useState(null); // {uid, sourceVpsKey, accNum}
@@ -198,6 +199,7 @@ function AdminSubscriptionView({ user, role }) {
   // Edit form states
   const [vpsEditForm, setVpsEditForm] = useState({ vpsName: "", monthlyCost: "", billingCycleDate: "", expiryDate: "", status: "active" });
   const [accEditForm, setAccEditForm] = useState({ profitShare: 30, botStartDate: "" });
+  const [userEditForm, setUserEditForm] = useState({ fullName: "", email: "", telegramId: "" });
   const [newVpsForm, setNewVpsForm] = useState({ vpsName: "", monthlyCost: "", billingCycleDate: "", expiryDate: "" });
   const [newAccForm, setNewAccForm] = useState({ accountNumber: "", profitShare: 30, botStartDate: new Date().toISOString().split("T")[0], account_flag: "green" });
 
@@ -452,6 +454,28 @@ function AdminSubscriptionView({ user, role }) {
     });
   };
 
+  const startEditUser = (uid, userData) => {
+    setEditingUser(uid);
+    setUserEditForm({
+      fullName: userData.fullName || "",
+      email: userData.email || "",
+      telegramId: userData.telegramId || "",
+    });
+  };
+
+  const handleUpdateUser = async (uid) => {
+    try {
+      const updates = {
+        fullName: userEditForm.fullName.trim(),
+        email: userEditForm.email.trim(),
+        telegramId: userEditForm.telegramId.trim(),
+      };
+      await update(ref(db, `users/${uid}`), updates);
+      toast.success("User info updated");
+      setEditingUser(null);
+    } catch (e) { toast.error("Failed to update user: " + e.message); }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[var(--background)]">
@@ -489,15 +513,18 @@ function AdminSubscriptionView({ user, role }) {
           data={treeData} invoices={invoices} role={role}
           editingVps={editingVps} setEditingVps={setEditingVps}
           editingAccount={editingAccount} setEditingAccount={setEditingAccount}
+          editingUser={editingUser} setEditingUser={setEditingUser}
           addingVpsForUser={addingVpsForUser} setAddingVpsForUser={setAddingVpsForUser}
           addingAccForVps={addingAccForVps} setAddingAccForVps={setAddingAccForVps}
           movingAccount={movingAccount} setMovingAccount={setMovingAccount}
           vpsEditForm={vpsEditForm} setVpsEditForm={setVpsEditForm}
           accEditForm={accEditForm} setAccEditForm={setAccEditForm}
+          userEditForm={userEditForm} setUserEditForm={setUserEditForm}
           newVpsForm={newVpsForm} setNewVpsForm={setNewVpsForm}
           newAccForm={newAccForm} setNewAccForm={setNewAccForm}
           onSaveVps={handleUpdateVps} onDeleteVps={handleDeleteVps} onAddVps={handleAddVps}
           onSaveAccount={handleUpdateAccount} onDeleteAccount={handleDeleteAccount} onAddAccount={handleAddAccount}
+          onSaveUser={handleUpdateUser} onStartEditUser={startEditUser}
           onMoveAccount={handleMoveAccount} onStartEditVps={startEditVps} onStartEditAccount={startEditAccount}
         />
       ) : (
@@ -575,10 +602,36 @@ function TreeNode({ node, depth, invoices, role, ...props }) {
         </div>
         <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${node.setupStatus === "completed" ? "bg-emerald-500/10 text-emerald-400" : node.setupStatus === "pending_setup" ? "bg-amber-500/10 text-amber-400" : "bg-slate-500/10 text-slate-400"}`}>{node.setupStatus || "unknown"}</span>
         <span className="px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 text-[10px] font-bold">{node.role}</span>
+        <button onClick={(e) => { e.stopPropagation(); props.onStartEditUser(node.uid, node); }} className="p-1.5 text-blue-400/60 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors" title="Edit User Info"><Edit3 size={13} /></button>
       </button>
 
       {expanded && (
         <div className="border-t border-[var(--card-border)] bg-[var(--background)]/30 p-3 space-y-2">
+          {/* User Edit Form */}
+          {props.editingUser === node.uid && (
+            <div className="p-3 bg-blue-500/5 border border-blue-500/20 rounded-xl space-y-2">
+              <p className="text-[9px] font-bold text-blue-400 uppercase tracking-wider">Edit User Info: {node.fullName}</p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div>
+                  <label className="text-[9px] text-[var(--muted-foreground)] uppercase block mb-1">Full Name</label>
+                  <input type="text" value={props.userEditForm.fullName} onChange={(e) => props.setUserEditForm(p => ({ ...p, fullName: e.target.value }))} className="w-full bg-[var(--background)] border border-blue-500/30 text-[var(--foreground)] text-xs rounded-lg px-3 py-2 outline-none focus:ring-1 focus:ring-blue-500" />
+                </div>
+                <div>
+                  <label className="text-[9px] text-[var(--muted-foreground)] uppercase block mb-1">Email</label>
+                  <input type="email" value={props.userEditForm.email} onChange={(e) => props.setUserEditForm(p => ({ ...p, email: e.target.value }))} className="w-full bg-[var(--background)] border border-blue-500/30 text-[var(--foreground)] text-xs rounded-lg px-3 py-2 outline-none focus:ring-1 focus:ring-blue-500" />
+                </div>
+                <div>
+                  <label className="text-[9px] text-[var(--muted-foreground)] uppercase block mb-1">Telegram ID</label>
+                  <input type="text" value={props.userEditForm.telegramId} onChange={(e) => props.setUserEditForm(p => ({ ...p, telegramId: e.target.value }))} className="w-full bg-[var(--background)] border border-blue-500/30 text-[var(--foreground)] text-xs rounded-lg px-3 py-2 outline-none focus:ring-1 focus:ring-blue-500" placeholder="Telegram Chat ID" />
+                </div>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <button onClick={() => props.setEditingUser(null)} className="text-xs text-slate-400 hover:text-white px-3 py-1.5 rounded-lg">Cancel</button>
+                <button onClick={() => props.onSaveUser(node.uid)} className="text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded-lg flex items-center gap-1"><Save size={12} /> Save</button>
+              </div>
+            </div>
+          )}
+
           {node.vpsList.map((vps) => (
             <VpsTreeNode key={vps.vpsKey} vps={vps} uid={node.uid} depth={1} invoices={invoices} role={role} allVpsList={node.vpsList} {...props} />
           ))}
