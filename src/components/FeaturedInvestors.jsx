@@ -162,6 +162,25 @@ export default function FeaturedInvestors({ lang = "en" }) {
 
   const formatPct = (val) => `${Number(val || 0).toFixed(2)}%`;
 
+  // Anonymize investor name for privacy
+  const anonymizeName = (name) => {
+    if (!name || name === "Investor" || name === "Public Investor") return name;
+    
+    // Split by space or special characters
+    const parts = name.split(/(['\-\s])/);
+    
+    return parts.map(part => {
+      // Keep special characters as is
+      if (part.match(/['\-\s]/)) return part;
+      
+      // If very short (1-2 chars), show first char only
+      if (part.length <= 2) return part[0] + '*'.repeat(part.length - 1);
+      
+      // For longer words, show first and last char
+      return part[0] + '*'.repeat(part.length - 2) + part[part.length - 1];
+    }).join('');
+  };
+
   const getBotColor = (botType) => {
     switch (botType) {
       case 'GOD_MODE': return 'from-amber-500/20 to-yellow-500/20 border-amber-500/30';
@@ -253,7 +272,7 @@ export default function FeaturedInvestors({ lang = "en" }) {
                     <TrendingUp size={20} className="text-emerald-400" />
                   </div>
                   <div>
-                    <div className="font-bold text-white text-sm">{investor.investorName}</div>
+                  <div className="font-bold text-white text-sm">{anonymizeName(investor.investorName)}</div>
                     <div className="text-[10px] text-slate-400 font-mono">{investor.accountNumber}</div>
                   </div>
                 </div>
