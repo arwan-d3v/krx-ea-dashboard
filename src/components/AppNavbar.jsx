@@ -6,7 +6,7 @@ import { useState, useEffect } from "react";
 import { 
     LayoutDashboard, BarChart, Key, ShieldCheck, 
     AlertCircle, UserPlus, Cpu, LogOut, Sun, Moon, Menu, X, Globe,
-    Folders, Clock, CreditCard // Ikon baru untuk Group Manager, Cron Manager & Subscription
+    Folders, Clock, CreditCard, TrendingUp, Analytics // Ikon baru untuk Group Manager, Cron Manager & Subscription
 } from "lucide-react";
 
 import { useAuth } from "../app/context/AuthContext";
@@ -128,7 +128,8 @@ export default function AppNavbar() {
         { href: "/user-management", icon: <UserPlus size={18} />, label: t.users, color: "green" },
         { href: "/ea-manager", icon: <Cpu size={18} />, label: t.ea_control, color: "blue" },
         { href: "/cron-manager", icon: <Clock size={18} />, label: "Cron Manager", color: "cyan" },
-        { href: "/subscription-area", icon: <CreditCard size={18} />, label: t.subscription, color: "purple" }
+        { href: "/subscription-area", icon: <CreditCard size={18} />, label: t.subscription, color: "purple" },
+        { href: "/deep-analytics", icon: <BarChart size={18} />, label: "Deep Analytics", color: "cyan" }
       );
     }
     return items;

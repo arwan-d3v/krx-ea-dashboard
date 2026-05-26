@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { ChevronRight, Cpu, Crown, Radar, Activity, Zap, Globe, Calculator, Receipt, ArrowRight, User } from "lucide-react";
+import { ChevronRight, Cpu, Crown, Radar, Activity, Zap, Globe, Calculator, Receipt, ArrowRight, User, Shield } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { db } from "../lib/firebase";
 import { ref, onValue } from "firebase/database";
+import FeaturedInvestors from "../components/FeaturedInvestors";
 
 // Custom SVG Shanks Claw untuk Beast Mode
 const ShanksClawMarks = ({ size = 24, className, ...props }) => (
@@ -392,6 +393,11 @@ export default function LandingPage() {
               </div>
             );
           })}
+        </div>
+
+        {/* === FEATURED INVESTORS SECTION === */}
+        <div className="mb-32">
+          <FeaturedInvestors lang={lang} />
         </div>
 
         {/* === PROJECTION MATRIX (REAL-TIME SIMULATOR) === */}

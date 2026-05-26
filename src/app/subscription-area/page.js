@@ -34,8 +34,14 @@ import {
   ArrowRightLeft,
   FolderTree,
   Settings,
+  Download,
+  Share2,
+  Filter,
+  Printer,
 } from "lucide-react";
 import { toast } from "sonner";
+import { generateReceiptHTML, generateTelegramMessage, generateInvoiceId } from "../../lib/receipt-generator";
+import ReceiptModal from "../../components/ReceiptModal";
 
 // ============================================================================
 // SUBSCRIPTION AREA — Unified Page for All Roles
@@ -198,7 +204,7 @@ function AdminSubscriptionView({ user, role }) {
 
   // Edit form states
   const [vpsEditForm, setVpsEditForm] = useState({ vpsName: "", monthlyCost: "", billingCycleDate: "", expiryDate: "", status: "active" });
-  const [accEditForm, setAccEditForm] = useState({ profitShare: 30, botStartDate: "" });
+  const [accEditForm, setAccEditForm] = useState({ profitShare: 30, botStartDate: "", account_flag: "green" });
   const [userEditForm, setUserEditForm] = useState({ fullName: "", email: "", telegramId: "" });
   const [newVpsForm, setNewVpsForm] = useState({ vpsName: "", monthlyCost: "", billingCycleDate: "", expiryDate: "" });
   const [newAccForm, setNewAccForm] = useState({ accountNumber: "", profitShare: 30, botStartDate: new Date().toISOString().split("T")[0], account_flag: "green" });
@@ -408,6 +414,7 @@ function AdminSubscriptionView({ user, role }) {
       await update(ref(db, `users/${uid}/subscriptions/${vpsKey}/accounts/${accNum}`), {
         profit_share_percent: Number(accEditForm.profitShare),
         bot_start_date: accEditForm.botStartDate,
+        account_flag: accEditForm.account_flag,
       });
       toast.success(`Account ${accNum} updated`);
       setEditingAccount(null);
@@ -448,9 +455,11 @@ function AdminSubscriptionView({ user, role }) {
 
   const startEditAccount = (uid, vpsKey, acc) => {
     setEditingAccount({ uid, vpsKey, accNum: acc.accNum });
+    const accData = users[uid]?.subscriptions?.[vpsKey]?.accounts?.[acc.accNum] || {};
     setAccEditForm({
       profitShare: acc.profitShare || 30,
       botStartDate: acc.botStartDate || "",
+      account_flag: accData.account_flag || "green",
     });
   };
 
@@ -846,6 +855,15 @@ function AccountNode({ acc, uid, vpsKey, allVpsList, invoices, ...props }) {
               <input type="date" value={props.accEditForm.botStartDate} onChange={(e) => props.setAccEditForm(p => ({ ...p, botStartDate: e.target.value }))} className="w-full bg-[var(--background)] border border-purple-500/30 text-[var(--foreground)] text-xs rounded-lg px-2 py-2 outline-none focus:ring-1 focus:ring-purple-500 [color-scheme:dark]" />
             </div>
           </div>
+          <div>
+            <label className="text-[9px] text-[var(--muted-foreground)] uppercase block mb-1">Account Flag</label>
+            <select value={props.accEditForm.account_flag} onChange={(e) => props.setAccEditForm(p => ({ ...p, account_flag: e.target.value }))} className="w-full bg-[var(--background)] border border-purple-500/30 text-[var(--foreground)] text-xs rounded-lg px-2 py-2 outline-none focus:ring-1 focus:ring-purple-500">
+              <option value="green">🟢 Green Flag (Public Investor)</option>
+              <option value="yellow">🟡 Yellow Flag (Admin as Investor)</option>
+              <option value="red">🔴 Red Flag (Tester Account)</option>
+              <option value="black">⚫ Black Flag (Owner Account - Hidden)</option>
+            </select>
+          </div>
           <div className="flex gap-2 justify-end">
             <button onClick={() => props.setEditingAccount(null)} className="text-xs text-slate-400 hover:text-white px-2 py-1">Cancel</button>
             <button onClick={() => props.onSaveAccount(uid, vpsKey, acc.accNum)} className="text-xs font-bold bg-purple-600 hover:bg-purple-500 text-white px-3 py-1 rounded-lg flex items-center gap-1"><Save size={10} /> Save</button>
@@ -947,6 +965,14 @@ function BillingCenterView({ users, accountData, invoices, role }) {
   const [invoiceType, setInvoiceType] = useState("vps");
   const [invoiceAmount, setInvoiceAmount] = useState("");
   const [saving, setSaving] = useState(false);
+  
+  // Enhanced invoice generation states
+  const [periodStartDate, setPeriodStartDate] = useState("");
+  const [periodEndDate, setPeriodEndDate] = useState("");
+  const [editingInvoice, setEditingInvoice] = useState(null);
+  const [editInvoiceAmount, setEditInvoiceAmount] = useState("");
+  const [showReceiptModal, setShowReceiptModal] = useState(null);
+  const [receiptHtml, setReceiptHtml] = useState("");
 
   const userList = useMemo(() => {
     return Object.entries(users).filter(([, d]) => d.role === "investor" || d.subscriptions).map(([uid, d]) => ({ uid, fullName: d.fullName || uid, email: d.email || "" })).sort((a, b) => a.fullName.localeCompare(b.fullName));
@@ -1028,6 +1054,156 @@ function BillingCenterView({ users, accountData, invoices, role }) {
     } catch (e) { toast.error("Failed to update invoice"); }
   };
 
+  // Enhanced CRUD functions for invoices
+  const handleGenerateInvoiceWithPeriod = async () => {
+    if (!selectedUser || !invoiceAmount) { toast.error("Fill all fields"); return; }
+    if (invoiceType === "profit_share" && (!periodStartDate || !periodEndDate)) { toast.error("Select period start and end dates"); return; }
+    
+    setSaving(true);
+    try {
+      const invId = generateInvoiceId(invoiceType);
+      const userData = users[selectedUser];
+      
+      const invoiceData = {
+        id: invId,
+        uid: selectedUser,
+        user_id: selectedUser,
+        user_name: userData?.fullName || selectedUser,
+        telegram_id: userData?.telegramId || "",
+        type: invoiceType,
+        account_number: invoiceType === "profit_share" ? selectedAccount : null,
+        accountNumber: invoiceType === "profit_share" ? selectedAccount : null,
+        amount: parseFloat(invoiceAmount),
+        status: "pending",
+        created_at: new Date().toISOString(),
+        due_date: new Date(Date.now() + 7 * 86400000).toISOString(),
+        paid_at: null,
+      };
+
+      // Add period dates for profit share invoices
+      if (invoiceType === "profit_share" && periodStartDate && periodEndDate) {
+        invoiceData.period_start = periodStartDate;
+        invoiceData.period_end = periodEndDate;
+        invoiceData.description = `Profit Share ${periodStartDate} to ${periodEndDate}`;
+      }
+
+      await set(ref(db, `invoices/${invId}`), invoiceData);
+      toast.success(`Invoice ${invId} generated`);
+      setShowManualInvoice(false);
+      setInvoiceAmount("");
+      setPeriodStartDate("");
+      setPeriodEndDate("");
+    } catch (e) { 
+      toast.error("Failed to generate invoice"); 
+    } finally { 
+      setSaving(false); 
+    }
+  };
+
+  const handleEditInvoice = async (invId) => {
+    if (!editInvoiceAmount || isNaN(editInvoiceAmount)) { 
+      toast.error("Enter a valid amount"); 
+      return; 
+    }
+    
+    setSaving(true);
+    try {
+      await update(ref(db, `invoices/${invId}`), {
+        amount: parseFloat(editInvoiceAmount),
+        updated_at: new Date().toISOString(),
+      });
+      toast.success("Invoice updated");
+      setEditingInvoice(null);
+      setEditInvoiceAmount("");
+    } catch (e) { 
+      toast.error("Failed to update invoice"); 
+    } finally { 
+      setSaving(false); 
+    }
+  };
+
+  const handleDeleteInvoice = async (invId, invStatus) => {
+    if (invStatus === "paid") {
+      toast.error("Cannot delete paid invoices");
+      return;
+    }
+    
+    if (!confirm(`Are you sure you want to delete invoice ${invId}? This cannot be undone.`)) return;
+    
+    try {
+      await remove(ref(db, `invoices/${invId}`));
+      toast.success(`Invoice ${invId} deleted`);
+    } catch (e) { 
+      toast.error("Failed to delete invoice"); 
+    }
+  };
+
+  const handleGenerateReceipt = (invoice) => {
+    const userData = users[selectedUser];
+    const receiptData = {
+      invoice,
+      user: {
+        fullName: userData?.fullName || invoice.user_name,
+        email: userData?.email || "",
+        telegramId: userData?.telegramId || invoice.telegram_id,
+      },
+      account: invoice.account_number || invoice.accountNumber,
+      accountData: accountData[invoice.account_number || invoice.accountNumber] || {},
+    };
+
+    const html = generateReceiptHTML(receiptData);
+    setReceiptHtml(html);
+    setShowReceiptModal(invoice);
+  };
+
+  const handleForwardToTelegram = (invoice) => {
+    const userData = users[selectedUser];
+    const telegramMessage = generateTelegramMessage({
+      invoice,
+      user: {
+        fullName: userData?.fullName || invoice.user_name,
+        telegramId: userData?.telegramId || invoice.telegram_id,
+      },
+      account: invoice.account_number || invoice.accountNumber,
+    });
+
+    // Open Telegram with pre-filled message
+    const telegramUrl = `https://t.me/${TELEGRAM_BOT_USERNAME}?text=${encodeURIComponent(telegramMessage)}`;
+    window.open(telegramUrl, "_blank");
+    toast.success("Opening Telegram...");
+  };
+
+  const handleDownloadReceipt = (invoice) => {
+    const userData = users[selectedUser];
+    const receiptData = {
+      invoice,
+      user: {
+        fullName: userData?.fullName || invoice.user_name,
+        email: userData?.email || "",
+        telegramId: userData?.telegramId || invoice.telegram_id,
+      },
+      account: invoice.account_number || invoice.accountNumber,
+      accountData: accountData[invoice.account_number || invoice.accountNumber] || {},
+    };
+
+    const html = generateReceiptHTML(receiptData);
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `receipt_${invoice.id}.html`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast.success("Receipt downloaded");
+  };
+
+  const startEditInvoice = (invoice) => {
+    setEditingInvoice(invoice.id);
+    setEditInvoiceAmount(invoice.amount.toString());
+  };
+
   return (
     <div className="space-y-6">
       {selectedUser && userAccounts.length > 0 && (
@@ -1081,10 +1257,32 @@ function BillingCenterView({ users, accountData, invoices, role }) {
         {showManualInvoice && (
           <div className="mb-6 p-4 bg-purple-500/5 border border-purple-500/20 rounded-2xl space-y-3">
             <h3 className="text-sm font-bold text-purple-400">Generate Manual Invoice</h3>
-            <select value={invoiceType} onChange={(e) => setInvoiceType(e.target.value)} className="w-full bg-[var(--muted)] border border-[var(--card-border)] rounded-xl px-3 py-2 text-sm text-[var(--foreground)]"><option value="vps">VPS Invoice</option><option value="profit_share">Profit Share Invoice</option></select>
-            {invoiceType === "profit_share" && <select value={selectedAccount} onChange={(e) => setSelectedAccount(e.target.value)} className="w-full bg-[var(--muted)] border border-[var(--card-border)] rounded-xl px-3 py-2 text-sm text-[var(--foreground)]"><option value="">Select Account</option>{userAccounts.map((acc) => (<option key={acc.accNum} value={acc.accNum}>{acc.accNum} ({acc.profitShare}%)</option>))}</select>}
+            <select value={invoiceType} onChange={(e) => setInvoiceType(e.target.value)} className="w-full bg-[var(--muted)] border border-[var(--card-border)] rounded-xl px-3 py-2 text-sm text-[var(--foreground)]">
+              <option value="vps">VPS Invoice</option>
+              <option value="profit_share">Profit Share Invoice</option>
+            </select>
+            {invoiceType === "profit_share" && (
+              <>
+                <select value={selectedAccount} onChange={(e) => setSelectedAccount(e.target.value)} className="w-full bg-[var(--muted)] border border-[var(--card-border)] rounded-xl px-3 py-2 text-sm text-[var(--foreground)]">
+                  <option value="">Select Account</option>
+                  {userAccounts.map((acc) => (<option key={acc.accNum} value={acc.accNum}>{acc.accNum} ({acc.profitShare}%)</option>))}
+                </select>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] font-bold text-[var(--muted-foreground)] uppercase block mb-1">Period Start</label>
+                    <input type="date" value={periodStartDate} onChange={(e) => setPeriodStartDate(e.target.value)} className="w-full bg-[var(--muted)] border border-[var(--card-border)] rounded-xl px-3 py-2 text-sm text-[var(--foreground)]" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-[var(--muted-foreground)] uppercase block mb-1">Period End</label>
+                    <input type="date" value={periodEndDate} onChange={(e) => setPeriodEndDate(e.target.value)} className="w-full bg-[var(--muted)] border border-[var(--card-border)] rounded-xl px-3 py-2 text-sm text-[var(--foreground)]" />
+                  </div>
+                </div>
+              </>
+            )}
             <input type="number" placeholder="Amount (USD)" value={invoiceAmount} onChange={(e) => setInvoiceAmount(e.target.value)} className="w-full bg-[var(--muted)] border border-[var(--card-border)] rounded-xl px-3 py-2 text-sm text-[var(--foreground)]" />
-            <button onClick={handleGenerateInvoice} disabled={saving} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white text-sm font-bold rounded-xl hover:bg-emerald-500 transition-all disabled:opacity-50">{saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} Generate</button>
+            <button onClick={handleGenerateInvoiceWithPeriod} disabled={saving} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white text-sm font-bold rounded-xl hover:bg-emerald-500 transition-all disabled:opacity-50">
+              {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} Generate Invoice
+            </button>
           </div>
         )}
         <div className="mb-4">
@@ -1092,7 +1290,7 @@ function BillingCenterView({ users, accountData, invoices, role }) {
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead><tr className="border-b border-[var(--card-border)] text-[var(--muted-foreground)] text-[10px] uppercase tracking-wider"><th className="text-left py-3 px-2">Invoice #</th><th className="text-left py-3 px-2">User</th><th className="text-left py-3 px-2">Type</th><th className="text-left py-3 px-2">Account</th><th className="text-right py-3 px-2">Amount</th><th className="text-center py-3 px-2">Status</th><th className="text-right py-3 px-2">Date</th><th className="text-center py-3 px-2">Action</th></tr></thead>
+            <thead><tr className="border-b border-[var(--card-border)] text-[var(--muted-foreground)] text-[10px] uppercase tracking-wider"><th className="text-left py-3 px-2">Invoice #</th><th className="text-left py-3 px-2">User</th><th className="text-left py-3 px-2">Type</th><th className="text-left py-3 px-2">Account</th><th className="text-right py-3 px-2">Amount</th><th className="text-center py-3 px-2">Status</th><th className="text-right py-3 px-2">Date</th><th className="text-center py-3 px-2">Actions</th></tr></thead>
             <tbody>
               {filteredInvoices.length === 0 && <tr><td colSpan={8} className="text-center py-8 text-[var(--muted-foreground)] text-sm">No invoices found.</td></tr>}
               {filteredInvoices.map((inv) => (
@@ -1101,15 +1299,53 @@ function BillingCenterView({ users, accountData, invoices, role }) {
                   <td className="py-3 px-2 text-xs">{inv.user_name || "\u2014"}</td>
                   <td className="py-3 px-2"><span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${inv.type === "vps" || inv.type === "vps_rental" ? "bg-blue-500/10 text-blue-400" : "bg-purple-500/10 text-purple-400"}`}>{inv.type === "vps" || inv.type === "vps_rental" ? "VPS" : "Profit"}</span></td>
                   <td className="py-3 px-2 font-mono text-xs">{inv.account_number || inv.accountNumber || "\u2014"}</td>
-                  <td className="py-3 px-2 text-right font-bold text-xs">${Number(inv.amount).toLocaleString()}</td>
+                  <td className="py-3 px-2 text-right font-bold text-xs">
+                    {editingInvoice === inv.id ? (
+                      <input type="number" value={editInvoiceAmount} onChange={(e) => setEditInvoiceAmount(e.target.value)} className="w-20 bg-[var(--background)] border border-purple-500/30 rounded px-2 py-1 text-right" />
+                    ) : (
+                      `$${Number(inv.amount).toLocaleString()}`
+                    )}
+                  </td>
                   <td className="py-3 px-2 text-center"><span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${inv.status === "paid" ? "bg-emerald-500/10 text-emerald-400" : inv.status === "pending" ? "bg-amber-500/10 text-amber-400" : "bg-red-500/10 text-red-400"}`}>{inv.status}</span></td>
                   <td className="py-3 px-2 text-right text-[10px] text-[var(--muted-foreground)]">{inv.created_at ? new Date(inv.created_at).toLocaleDateString() : "\u2014"}</td>
-                  <td className="py-3 px-2 text-center">{inv.status === "pending" && <button onClick={() => handleMarkPaid(inv.id)} className="px-2 py-0.5 bg-emerald-600 text-white text-[10px] font-bold rounded-lg hover:bg-emerald-500 transition-all">Mark Paid</button>}</td>
+                  <td className="py-3 px-2">
+                    <div className="flex items-center justify-center gap-1">
+                      {inv.status === "pending" && (
+                        <>
+                          {editingInvoice === inv.id ? (
+                            <>
+                              <button onClick={() => handleEditInvoice(inv.id)} className="p-1 text-emerald-400 hover:bg-emerald-500/10 rounded" title="Save"><Save size={12} /></button>
+                              <button onClick={() => { setEditingInvoice(null); setEditInvoiceAmount(""); }} className="p-1 text-slate-400 hover:bg-slate-500/10 rounded" title="Cancel"><X size={12} /></button>
+                            </>
+                          ) : (
+                            <>
+                              <button onClick={() => handleMarkPaid(inv.id)} className="p-1 text-emerald-400 hover:bg-emerald-500/10 rounded" title="Mark Paid"><Check size={12} /></button>
+                              <button onClick={() => startEditInvoice(inv)} className="p-1 text-blue-400 hover:bg-blue-500/10 rounded" title="Edit Amount"><Edit3 size={12} /></button>
+                              <button onClick={() => handleDeleteInvoice(inv.id, inv.status)} className="p-1 text-red-400 hover:bg-red-500/10 rounded" title="Delete"><Trash2 size={12} /></button>
+                            </>
+                          )}
+                        </>
+                      )}
+                      {/* Receipt Actions - Available for all statuses */}
+                      <button onClick={() => handleGenerateReceipt(inv)} className="p-1 text-purple-400 hover:bg-purple-500/10 rounded" title="Preview Receipt"><Receipt size={12} /></button>
+                      <button onClick={() => handleDownloadReceipt(inv)} className="p-1 text-cyan-400 hover:bg-cyan-500/10 rounded" title="Download Receipt"><Download size={12} /></button>
+                      <button onClick={() => handleForwardToTelegram(inv)} className="p-1 text-[#2AABEE] hover:bg-[#2AABEE]/10 rounded" title="Forward to Telegram"><Send size={12} /></button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+
+        {/* Receipt Modal */}
+        <ReceiptModal 
+          isOpen={showReceiptModal !== null}
+          onClose={() => setShowReceiptModal(null)}
+          invoice={showReceiptModal}
+          userData={selectedUser ? users[selectedUser] : null}
+          accountData={showReceiptModal ? accountData[showReceiptModal.account_number || showReceiptModal.accountNumber] || {} : {}}
+        />
       </div>
 
       {/* Profit Share Management */}
