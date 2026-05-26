@@ -18,6 +18,9 @@ export default function FeaturedInvestors({ lang = "en" }) {
     totalGain: 0,
     avgDailyGain: 0,
   });
+  const [accountData, setAccountData] = useState({});
+  const [usersData, setUsersData] = useState({});
+  const [groupsData, setGroupsData] = useState({});
 
   const dict = {
     en: {
@@ -54,97 +57,118 @@ export default function FeaturedInvestors({ lang = "en" }) {
     const fetchFeaturedInvestors = () => {
       const accountDataRef = ref(db, "account_data");
       const usersRef = ref(db, "users");
+      const groupsRef = ref(db, "groups");
 
       onValue(accountDataRef, (accountSnap) => {
         onValue(usersRef, (usersSnap) => {
-          const accounts = accountSnap.exists() ? accountSnap.val() : {};
-          const users = usersSnap.exists() ? usersSnap.val() : {};
+          onValue(groupsRef, (groupsSnap) => {
+            const accounts = accountSnap.exists() ? accountSnap.val() : {};
+            const users = usersSnap.exists() ? usersSnap.val() : {};
+            const groups = groupsSnap.exists() ? groupsSnap.val() : {};
 
-          const investors = [];
+            // Simpan data ke state
+            setAccountData(accounts);
+            setUsersData(users);
+            setGroupsData(groups);
 
-          Object.entries(accounts).forEach(([accNum, accData]) => {
-            const metadata = accData.metadata || {};
-            const realtimeStats = accData.realtime_stats || {};
-            const snapshots = accData.snapshots || {};
+            const investors = [];
 
-            // Hanya tampilkan akun dengan Green Flag (Public Investor)
-            const accountFlag = metadata.account_flag || "green";
-            if (accountFlag !== "green") return;
+            Object.entries(accounts).forEach(([accNum, accData]) => {
+              const metadata = accData.metadata || {};
+              const realtimeStats = accData.realtime_stats || {};
+              const snapshots = accData.snapshots || {};
 
-            // Cari user yang memiliki akun ini
-            let ownerInfo = null;
-            Object.entries(users).forEach(([uid, userData]) => {
-              if (userData.subscriptions) {
-                Object.values(userData.subscriptions).forEach((vpsData) => {
-                  if (vpsData.accounts && vpsData.accounts[accNum]) {
-                    ownerInfo = {
-                      uid,
-                      fullName: userData.fullName || "Investor",
-                      email: userData.email || "",
-                    };
+              // Cek flag dari metadata
+              const metadataFlag = metadata.account_flag || "green";
+              
+              // Cek flag dari groups
+              let hasHiddenFlag = false;
+              Object.values(groups).forEach((group) => {
+                if (group.account_flags && group.account_flags[accNum]) {
+                  if (group.account_flags[accNum] === "black") {
+                    hasHiddenFlag = true;
                   }
+                }
+              });
+
+              // Jika flag adalah "black" di mana saja, sembunyikan
+              if (metadataFlag === "black" || hasHiddenFlag) return;
+
+              // Cari user yang memiliki akun ini
+              let ownerInfo = null;
+              Object.entries(users).forEach(([uid, userData]) => {
+                if (userData.subscriptions) {
+                  Object.values(userData.subscriptions).forEach((vpsData) => {
+                    if (vpsData.accounts && vpsData.accounts[accNum]) {
+                      ownerInfo = {
+                        uid,
+                        fullName: userData.fullName || "Investor",
+                        email: userData.email || "",
+                      };
+                    }
+                  });
+                }
+              });
+
+              // Hitung metrics dari snapshots
+              let totalGain = 0;
+              let dailyGains = [];
+              let firstDate = null;
+              let lastDate = null;
+
+              Object.entries(snapshots).forEach(([tsKey, snapshot]) => {
+                const gain = Number(snapshot.daily_growth_percent || snapshot.growth || 0);
+                totalGain += gain;
+                if (gain !== 0) dailyGains.push(gain);
+
+                const date = new Date(parseInt(tsKey) * (parseInt(tsKey) < 10000000000 ? 1000 : 1));
+                if (!firstDate || date < firstDate) firstDate = date;
+                if (!lastDate || date > lastDate) lastDate = date;
+              });
+
+              const avgDailyGain = dailyGains.length > 0 
+                ? dailyGains.reduce((a, b) => a + b, 0) / dailyGains.length 
+                : 0;
+
+              const balance = Number(realtimeStats.balance || metadata.balance || 0);
+              const growth = Number(realtimeStats.absolute_growth_percent || 0);
+
+              if (growth > 0 || totalGain > 0) {
+                investors.push({
+                  accountNumber: accNum,
+                  investorName: ownerInfo?.fullName || metadata.investor_name || "Public Investor",
+                  totalGain: growth || totalGain,
+                  avgDailyGain,
+                  balance,
+                  botType: metadata.bot_type || "QUANTITATIVE",
+                  broker: metadata.broker || "MT5",
+                  startDate: metadata.bot_start_date || (firstDate ? firstDate.toISOString().split('T')[0] : null),
+                  lastUpdate: lastDate ? lastDate.toISOString() : realtimeStats.last_update,
+                  status: realtimeStats.status || metadata.status || "active",
                 });
               }
             });
 
-            // Hitung metrics dari snapshots
-            let totalGain = 0;
-            let dailyGains = [];
-            let firstDate = null;
-            let lastDate = null;
+            // Sort by total gain (descending) dan ambil top 6
+            const topInvestors = investors
+              .sort((a, b) => b.totalGain - a.totalGain)
+              .slice(0, 6);
 
-            Object.entries(snapshots).forEach(([tsKey, snapshot]) => {
-              const gain = Number(snapshot.daily_growth_percent || snapshot.growth || 0);
-              totalGain += gain;
-              if (gain !== 0) dailyGains.push(gain);
+            setFeaturedInvestors(topInvestors);
 
-              const date = new Date(parseInt(tsKey) * (parseInt(tsKey) < 10000000000 ? 1000 : 1));
-              if (!firstDate || date < firstDate) firstDate = date;
-              if (!lastDate || date > lastDate) lastDate = date;
-            });
-
-            const avgDailyGain = dailyGains.length > 0 
-              ? dailyGains.reduce((a, b) => a + b, 0) / dailyGains.length 
-              : 0;
-
-            const balance = Number(realtimeStats.balance || metadata.balance || 0);
-            const growth = Number(realtimeStats.absolute_growth_percent || 0);
-
-            if (growth > 0 || totalGain > 0) {
-              investors.push({
-                accountNumber: accNum,
-                investorName: ownerInfo?.fullName || metadata.investor_name || "Public Investor",
-                totalGain: growth || totalGain,
-                avgDailyGain,
-                balance,
-                botType: metadata.bot_type || "QUANTITATIVE",
-                broker: metadata.broker || "MT5",
-                startDate: metadata.bot_start_date || (firstDate ? firstDate.toISOString().split('T')[0] : null),
-                lastUpdate: lastDate ? lastDate.toISOString() : realtimeStats.last_update,
-                status: realtimeStats.status || metadata.status || "active",
+            // Hitung stats
+            if (investors.length > 0) {
+              const totalGainSum = investors.reduce((sum, inv) => sum + inv.totalGain, 0);
+              const avgDailySum = investors.reduce((sum, inv) => sum + inv.avgDailyGain, 0);
+              setStats({
+                totalInvestors: investors.length,
+                totalGain: totalGainSum / investors.length,
+                avgDailyGain: avgDailySum / investors.length,
               });
             }
+
+            setLoading(false);
           });
-
-          // Sort by total gain (descending) dan ambil top 6
-          const topInvestors = investors
-            .sort((a, b) => b.totalGain - a.totalGain)
-            .slice(0, 6);
-
-          setFeaturedInvestors(topInvestors);
-
-          // Hitung stats
-          if (investors.length > 0) {
-            const totalGainSum = investors.reduce((sum, inv) => sum + inv.totalGain, 0);
-            const avgDailySum = investors.reduce((sum, inv) => sum + inv.avgDailyGain, 0);
-            setStats({
-              totalInvestors: investors.length,
-              totalGain: totalGainSum / investors.length,
-              avgDailyGain: avgDailySum / investors.length,
-            });
-          }
-
-          setLoading(false);
         });
       });
     };

@@ -36,6 +36,8 @@ export default function UserManagement() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [checkedItems, setCheckedItems] = useState({});
+  const [accountFlags, setAccountFlags] = useState({});
+  const [accToVps, setAccToVps] = useState({});
   const [isSavingAccess, setIsSavingAccess] = useState(false);
 
   // ── JSON Import State ──
@@ -226,12 +228,33 @@ export default function UserManagement() {
   const openAccessModal = (uid, userObj) => {
     setSelectedUser({ uid, email: userObj.email, role: userObj.role });
     const initialChecked = {};
+    const initialFlags = {};
+    const initialAccToVps = {};
+    
     if (userObj.role === "admin") {
       if (userObj.managed_groups) Object.keys(userObj.managed_groups).forEach(gId => initialChecked[gId] = userObj.managed_groups[gId]);
     } else {
-      if (userObj.owned_accounts) Object.keys(userObj.owned_accounts).forEach(accId => initialChecked[accId] = userObj.owned_accounts[accId]);
+      // Build owned_accounts mapping and extract flags from subscriptions
+      if (userObj.owned_accounts) {
+        Object.keys(userObj.owned_accounts).forEach(accId => initialChecked[accId] = userObj.owned_accounts[accId]);
+      }
+      
+      // Extract flags and vps mapping from subscriptions
+      if (userObj.subscriptions) {
+        Object.entries(userObj.subscriptions).forEach(([vpsKey, vpsData]) => {
+          if (vpsData.accounts) {
+            Object.entries(vpsData.accounts).forEach(([accNum, accData]) => {
+              initialFlags[accNum] = accData.account_flag || "green";
+              initialAccToVps[accNum] = vpsKey;
+            });
+          }
+        });
+      }
     }
+    
     setCheckedItems(initialChecked);
+    setAccountFlags(initialFlags);
+    setAccToVps(initialAccToVps);
     setIsModalOpen(true);
   };
 
@@ -248,6 +271,25 @@ export default function UserManagement() {
       });
       const targetNode = selectedUser.role === "admin" ? "managed_groups" : "owned_accounts";
       await set(ref(db, `users/${selectedUser.uid}/${targetNode}`), finalMapping);
+      
+      // Save account flags for investor accounts
+      if (selectedUser.role === "investor") {
+        const updates = {};
+        Object.keys(checkedItems).forEach(accNum => {
+          if (checkedItems[accNum] === true && accountFlags[accNum]) {
+            const vpsKey = accToVps[accNum];
+            if (vpsKey) {
+              updates[`users/${selectedUser.uid}/subscriptions/${vpsKey}/accounts/${accNum}/account_flag`] = accountFlags[accNum];
+            }
+          }
+        });
+        
+        // Apply all flag updates
+        for (const path in updates) {
+          await set(ref(db, path), updates[path]);
+        }
+      }
+      
       setIsModalOpen(false);
     } catch (error) {
       alert("Terjadi kesalahan saat menyimpan hak akses.");
@@ -829,18 +871,49 @@ export default function UserManagement() {
               )}
               {selectedUser.role === "investor" && (
                 eaAccounts.length === 0 ? <p className="text-center text-xs text-slate-500 py-4">Belum ada node akun EA yang menyala.</p> : (
-                  eaAccounts.map(accId => (
-                    <label key={accId} className={`flex items-center gap-4 p-4 rounded-xl border cursor-pointer transition-all ${checkedItems[accId] ? "bg-blue-500/10 border-blue-500/40" : "bg-white/5 border-white/10 hover:border-white/20"}`}>
-                      <div className="relative flex items-center">
-                        <input type="checkbox" className="peer sr-only" checked={checkedItems[accId] || false} onChange={() => handleCheckboxToggle(accId)} />
-                        <div className="w-5 h-5 border-2 border-slate-500 rounded flex items-center justify-center peer-checked:bg-blue-500 peer-checked:border-blue-500"><ShieldCheck size={14} className="text-white" /></div>
+                  eaAccounts.map(accId => {
+                    const isOwned = checkedItems[accId];
+                    const currentFlag = accountFlags[accId] || "green";
+                    
+                    return (
+                      <div key={accId} className={`flex items-center gap-4 p-4 rounded-xl border transition-all ${isOwned ? "bg-blue-500/10 border-blue-500/40" : "bg-white/5 border-white/10 hover:border-white/20"}`}>
+                        <label className="relative flex items-center cursor-pointer">
+                          <input type="checkbox" className="peer sr-only" checked={isOwned || false} onChange={() => handleCheckboxToggle(accId)} />
+                          <div className="w-5 h-5 border-2 border-slate-500 rounded flex items-center justify-center peer-checked:bg-blue-500 peer-checked:border-blue-500"><ShieldCheck size={14} className="text-white" /></div>
+                        </label>
+                        
+                        <div className="flex-1 min-w-0">
+                          <p className={`font-black tracking-widest font-mono text-sm ${isOwned ? "text-blue-400" : "text-slate-300"}`}>{accId}</p>
+                          <p className="text-[10px] text-slate-500 uppercase tracking-widest mt-0.5">KRX Quantitative Node</p>
+                        </div>
+                        
+                        {/* Flag Dropdown - Only visible when account is owned */}
+                        {isOwned && (
+                          <div className="flex-shrink-0">
+                            <select
+                              value={currentFlag}
+                              onChange={(e) => {
+                                e.stopPropagation();
+                                setAccountFlags(prev => ({ ...prev, [accId]: e.target.value }));
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                              className={`text-[10px] font-bold rounded-lg px-2 py-1.5 border cursor-pointer outline-none ${
+                                currentFlag === "green" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" :
+                                currentFlag === "yellow" ? "bg-amber-500/10 text-amber-400 border-amber-500/30" :
+                                currentFlag === "red" ? "bg-red-500/10 text-red-400 border-red-500/30" :
+                                "bg-slate-500/10 text-slate-400 border-slate-500/30"
+                              }`}
+                            >
+                              <option value="green">🟢 Public</option>
+                              <option value="yellow">🟡 Admin</option>
+                              <option value="red">🔴 Tester</option>
+                              <option value="black">⚫ Hidden</option>
+                            </select>
+                          </div>
+                        )}
                       </div>
-                      <div>
-                        <p className={`font-black tracking-widest font-mono text-sm ${checkedItems[accId] ? "text-blue-400" : "text-slate-300"}`}>{accId}</p>
-                        <p className="text-[10px] text-slate-500 uppercase tracking-widest mt-0.5">KRX Quantitative Node</p>
-                      </div>
-                    </label>
-                  ))
+                    );
+                  })
                 )
               )}
             </div>

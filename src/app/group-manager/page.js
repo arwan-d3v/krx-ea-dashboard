@@ -19,6 +19,7 @@ export default function GroupManager() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [checkedAccounts, setCheckedAccounts] = useState({});
+  const [accountFlags, setAccountFlags] = useState({});
   const [isSaving, setIsSaving] = useState(false);
 
   // ========================================================================
@@ -95,12 +96,20 @@ export default function GroupManager() {
     
     // Siapkan checklist akun yang sudah ada di grup ini
     const initialChecked = {};
+    const initialFlags = {};
     if (groupData.accounts) {
       Object.keys(groupData.accounts).forEach(accId => {
         initialChecked[accId] = groupData.accounts[accId];
       });
     }
+    // Ambil flags yang tersimpan di grup (jika ada)
+    if (groupData.account_flags) {
+      Object.keys(groupData.account_flags).forEach(accId => {
+        initialFlags[accId] = groupData.account_flags[accId];
+      });
+    }
     setCheckedAccounts(initialChecked);
+    setAccountFlags(initialFlags);
     setIsModalOpen(true);
   };
 
@@ -124,6 +133,15 @@ export default function GroupManager() {
 
       // Simpan ke node groups/groupId/accounts
       await set(ref(db, `groups/${selectedGroup.id}/accounts`), finalMapping);
+      
+      // Simpan account flags ke groups/{groupId}/account_flags
+      const finalFlags = {};
+      Object.keys(checkedAccounts).forEach(accId => {
+        if (checkedAccounts[accId] === true && accountFlags[accId]) {
+          finalFlags[accId] = accountFlags[accId];
+        }
+      });
+      await set(ref(db, `groups/${selectedGroup.id}/account_flags`), finalFlags);
       
       setIsModalOpen(false);
     } catch (error) {
@@ -240,34 +258,65 @@ export default function GroupManager() {
               {eaAccounts.length === 0 ? (
                 <p className="text-center text-xs text-slate-500 italic py-4">Belum ada node akun EA di server.</p>
               ) : (
-                eaAccounts.map(accId => (
-                  <label 
-                    key={accId} 
-                    className={`flex items-center gap-4 p-4 rounded-xl border cursor-pointer transition-all ${
-                      checkedAccounts[accId] 
-                        ? 'bg-purple-500/10 border-purple-500/40 shadow-[0_0_15px_rgba(147,51,234,0.1)]' 
-                        : 'bg-white/5 border-white/10 hover:border-white/20'
-                    }`}
-                  >
-                    <div className="relative flex items-center">
-                      <input 
-                        type="checkbox" 
-                        className="peer sr-only"
-                        checked={checkedAccounts[accId] || false}
-                        onChange={() => handleCheckboxToggle(accId)}
-                      />
-                      <div className="w-5 h-5 border-2 border-slate-500 rounded flex items-center justify-center peer-checked:bg-purple-500 peer-checked:border-purple-500 transition-colors">
-                        {checkedAccounts[accId] && <ShieldCheck size={14} className="text-white" />}
+                eaAccounts.map(accId => {
+                  const isChecked = checkedAccounts[accId];
+                  const currentFlag = accountFlags[accId] || "green";
+                  
+                  return (
+                    <div 
+                      key={accId} 
+                      className={`flex items-center gap-4 p-4 rounded-xl border transition-all ${
+                        isChecked 
+                          ? 'bg-purple-500/10 border-purple-500/40 shadow-[0_0_15px_rgba(147,51,234,0.1)]' 
+                          : 'bg-white/5 border-white/10 hover:border-white/20'
+                      }`}
+                    >
+                      <label className="relative flex items-center cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          className="peer sr-only"
+                          checked={isChecked || false}
+                          onChange={() => handleCheckboxToggle(accId)}
+                        />
+                        <div className="w-5 h-5 border-2 border-slate-500 rounded flex items-center justify-center peer-checked:bg-purple-500 peer-checked:border-purple-500 transition-colors">
+                          {isChecked && <ShieldCheck size={14} className="text-white" />}
+                        </div>
+                      </label>
+                      
+                      <div className="flex-1 min-w-0">
+                        <p className={`font-black tracking-widest font-mono text-sm ${isChecked ? 'text-purple-400' : 'text-slate-300'}`}>
+                          {accId}
+                        </p>
+                        <p className="text-[10px] text-slate-500 uppercase tracking-widest mt-0.5">MT5 Trading Node</p>
                       </div>
+                      
+                      {/* Flag Dropdown - Only visible when account is checked */}
+                      {isChecked && (
+                        <div className="flex-shrink-0">
+                          <select
+                            value={currentFlag}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              setAccountFlags(prev => ({ ...prev, [accId]: e.target.value }));
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            className={`text-[10px] font-bold rounded-lg px-2 py-1.5 border cursor-pointer outline-none ${
+                              currentFlag === "green" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" :
+                              currentFlag === "yellow" ? "bg-amber-500/10 text-amber-400 border-amber-500/30" :
+                              currentFlag === "red" ? "bg-red-500/10 text-red-400 border-red-500/30" :
+                              "bg-slate-500/10 text-slate-400 border-slate-500/30"
+                            }`}
+                          >
+                            <option value="green">🟢 Public</option>
+                            <option value="yellow">🟡 Admin</option>
+                            <option value="red">🔴 Tester</option>
+                            <option value="black">⚫ Hidden</option>
+                          </select>
+                        </div>
+                      )}
                     </div>
-                    <div>
-                      <p className={`font-black tracking-widest font-mono text-sm ${checkedAccounts[accId] ? 'text-purple-400' : 'text-slate-300'}`}>
-                        {accId}
-                      </p>
-                      <p className="text-[10px] text-slate-500 uppercase tracking-widest mt-0.5">MT5 Trading Node</p>
-                    </div>
-                  </label>
-                ))
+                  );
+                })
               )}
             </div>
 
