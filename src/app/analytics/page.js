@@ -1,750 +1,835 @@
 "use client";
-import { useState, useEffect, useMemo, useCallback } from "react";
-import { useAuth } from "../context/AuthContext";
-import { db } from "../../lib/firebase";
-import { ref, onValue } from "firebase/database";
+import { useState, useEffect } from "react";
 import {
-  Calendar,
+  CalendarDays,
+  BarChart,
+  Target,
+  TrendingUp,
+  TrendingDown,
+  Activity,
+  ShieldAlert,
+  BadgeDollarSign,
+  PieChart,
   ChevronLeft,
   ChevronRight,
-  TrendingUp,
-  DollarSign,
-  BarChart3,
-  Scale,
-  Cpu,
-  AlertTriangle,
-  Zap,
-  Wallet,
   ChevronDown,
-  ChevronUp,
-  ArrowUpRight,
-  ArrowDownRight,
-  Activity,
+  Download,
+  Loader2,
 } from "lucide-react";
-import LoadingSpinner from "../../components/ui/LoadingSpinner";
-import EmptyState from "../../components/ui/EmptyState";
-import StatCard from "../../components/ui/StatCard";
-
-// ============================================================================
-// ANALYTICS PAGE — Multi-Role Calendar View (Enhanced Terminal Jarvis UI)
-//   - Desktop: Calendar monthly heatmap with glassmorphism
-//   - Mobile: Expandable list rows with detailed breakdown per day
-//   - Core logic: UNCHANGED from original
-// ============================================================================
+import { db } from "../../lib/firebase";
+import { ref, onValue } from "firebase/database";
+import { generateMonthlyReport } from "../../lib/pdf-generator";
 
 export default function AnalyticsPage() {
-  const { user, role } = useAuth();
-  return <AnalyticsContent user={user} role={role} />;
-}
-
-// ── useMediaQuery hook ──
-function useMediaQuery(query) {
-  const [matches, setMatches] = useState(false);
-
-  useEffect(() => {
-    const media = window.matchMedia(query);
-    setMatches(media.matches);
-    const listener = (e) => setMatches(e.matches);
-    media.addEventListener("change", listener);
-    return () => media.removeEventListener("change", listener);
-  }, [query]);
-
-  return matches;
-}
-
-function AnalyticsContent({ user, role }) {
-  const [loading, setLoading] = useState(true);
-  const [selectedAccount, setSelectedAccount] = useState(null);
-  const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
-  const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
-  const [expandedDay, setExpandedDay] = useState(null);
-
-  const isMobile = useMediaQuery("(max-width: 640px)");
-
-  // Firebase data (UNCHANGED logic)
-  const [userData, setUserData] = useState(null);
-  const [accountData, setAccountData] = useState({});
-  const [groupsData, setGroupsData] = useState({});
-  const [profitHistory, setProfitHistory] = useState({});
-
-  // ── Load user profile & managed groups (UNCHANGED) ──
-  useEffect(() => {
-    if (!user) return;
-    const unsub = onValue(ref(db, `users/${user.uid}`), (snap) => {
-      if (snap.exists()) setUserData(snap.val());
-      else setUserData(null);
-    });
-    return () => unsub();
-  }, [user]);
+  const [allAccountsData, setAllAccountsData] = useState({});
+  const [accountsList, setAccountsList] = useState([]);
+  const [selectedAccountId, setSelectedAccountId] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+  const [viewDate, setViewDate] = useState(new Date());
+  const [expandedWeeks, setExpandedWeeks] = useState(new Set());
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
 
   useEffect(() => {
-    const unsub = onValue(ref(db, "account_data"), (snap) => {
-      if (snap.exists()) setAccountData(snap.val());
-      else setAccountData({});
-    });
-    return () => unsub();
-  }, []);
-
-  useEffect(() => {
-    const unsub = onValue(ref(db, "groups"), (snap) => {
-      if (snap.exists()) setGroupsData(snap.val());
-      else setGroupsData({});
-    });
-    return () => unsub();
-  }, []);
-
-  // Derived: owned account numbers PER ROLE (UNCHANGED)
-  const ownedAccounts = useMemo(() => {
-    if (!accountData) return [];
-
-    if (role === "super_admin") {
-      return Object.keys(accountData).sort();
-    }
-
-    if (role === "admin") {
-      const managed = userData?.managed_groups || {};
-      const allowed = new Set();
-      Object.keys(managed)
-        .filter((k) => managed[k])
-        .forEach((groupId) => {
-          const g = groupsData[groupId];
-          if (g?.accounts) Object.keys(g.accounts).forEach((acc) => allowed.add(acc));
-        });
-      return [...allowed].filter((acc) => accountData[acc]).sort();
-    }
-
-    if (role === "investor") {
-      const owned = userData?.owned_accounts || {};
-      const fromOwned = Object.keys(owned).filter((k) => owned[k] && accountData[k]);
-      if (fromOwned.length > 0) return fromOwned.sort();
-
-      const subs = userData?.subscriptions || {};
-      const fromSubs = [];
-      Object.entries(subs).forEach(([vpsKey, vpsData]) => {
-        Object.entries(vpsData.accounts || {}).forEach(([accNum]) => {
-          if (accountData[accNum]) fromSubs.push(accNum);
-        });
-      });
-      return fromSubs.sort();
-    }
-
-    return [];
-  }, [userData, accountData, groupsData, role]);
-
-  // Load snapshots (UNCHANGED logic)
-  useEffect(() => {
-    if (!selectedAccount) return;
-    const unsub = onValue(
-      ref(db, `account_data/${selectedAccount}/snapshots`),
-      (snap) => {
-        if (snap.exists()) {
-          const snapshots = snap.val();
-          const dailyData = {};
-
-          Object.keys(snapshots).forEach((tsKey) => {
-            let timeMs = parseInt(tsKey);
-            if (isNaN(timeMs)) return;
-
-            if (timeMs < 10000000000) {
-              timeMs = timeMs * 1000;
-            }
-
-            const exactDateWITA = new Date(timeMs + 28800000);
-            const y = exactDateWITA.getUTCFullYear();
-            const m = String(exactDateWITA.getUTCMonth() + 1).padStart(2, "0");
-            const d = String(exactDateWITA.getUTCDate()).padStart(2, "0");
-            const dateKey = `${y}-${m}-${d}`;
-
-            const data = snapshots[tsKey];
-            dailyData[dateKey] = {
-              daily_profit: data.daily_profit || data.profit || 0,
-              lot_volume: data.daily_lots || data.lot || data.lots || 0,
-              percentage_growth: data.daily_growth_percent || data.growth || data.growth_percent || 0,
-              balance: data.balance || 0,
-            };
-          });
-
-          setProfitHistory((prev) => ({
-            ...prev,
-            [selectedAccount]: dailyData,
-          }));
+    const accountsRef = ref(db, "account_data");
+    const unsubscribe = onValue(accountsRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        setAllAccountsData(data);
+        const accounts = Object.keys(data);
+        setAccountsList(accounts);
+        if (!selectedAccountId || !accounts.includes(selectedAccountId)) {
+          setSelectedAccountId(accounts[0]);
         }
       }
-    );
-    return () => unsub();
-  }, [selectedAccount]);
+      setIsLoading(false);
+    });
+    return () => unsubscribe();
+  }, [selectedAccountId]);
 
-  useEffect(() => {
-    const t = setTimeout(() => setLoading(false), 600);
-    return () => clearTimeout(t);
-  }, []);
+  const currentMonth = viewDate.getMonth();
+  const currentYear = viewDate.getFullYear();
+  const monthName = viewDate.toLocaleString("id-ID", {
+    month: "long",
+    year: "numeric",
+  });
 
-  useEffect(() => {
-    if (!selectedAccount && ownedAccounts.length > 0) {
-      const timer = setTimeout(() => {
-        setSelectedAccount(ownedAccounts[0]);
-      }, 0);
-      return () => clearTimeout(timer);
+  const goToPrevMonth = () =>
+    setViewDate(new Date(currentYear, currentMonth - 1, 1));
+  const goToNextMonth = () =>
+    setViewDate(new Date(currentYear, currentMonth + 1, 1));
+
+  // --- PEMROSESAN DATA SNAPSHOT (FIX DETIK VS MILIDETIK) ---
+  const snapshots = allAccountsData[selectedAccountId]?.snapshots || {};
+  const processedSnapshots = {};
+
+  Object.keys(snapshots).forEach((tsKey) => {
+    let timeMs = parseInt(tsKey);
+
+    // Jika EA mengirim format DETIK (10 digit angka), kalikan 1000 jadi MILIDETIK
+    if (timeMs < 10000000000) {
+      timeMs = timeMs * 1000;
     }
-  }, [ownedAccounts, selectedAccount]);
 
-  // ── MONTH NAVIGATION (UNCHANGED) ──
-  const prevMonth = () => {
-    if (currentMonth === 0) {
-      setCurrentMonth(11);
-      setCurrentYear((y) => y - 1);
-    } else {
-      setCurrentMonth((m) => m - 1);
-    }
-    setExpandedDay(null);
-  };
+    // Tambah 8 jam (28.800.000 ms) untuk konversi ke WITA / GMT+8 Mutlak
+    const exactDateWITA = new Date(timeMs + 28800000);
 
-  const nextMonth = () => {
-    if (currentMonth === 11) {
-      setCurrentMonth(0);
-      setCurrentYear((y) => y + 1);
-    } else {
-      setCurrentMonth((m) => m + 1);
-    }
-    setExpandedDay(null);
-  };
+    const y = exactDateWITA.getUTCFullYear();
+    const m = exactDateWITA.getUTCMonth();
+    const d = exactDateWITA.getUTCDate();
 
-  const monthNames = [
-    "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December",
-  ];
+    processedSnapshots[`${y}-${m}-${d}`] = snapshots[tsKey];
+  });
 
-  // ── BUILD CALENDAR GRID (UNCHANGED logic) ──
-  const calendarDays = useMemo(() => {
-    const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
-    const firstDayOfWeek = new Date(currentYear, currentMonth, 1).getDay();
+  // --- GENERATOR HARI ---
+  const generateMonthlyData = () => {
     const days = [];
+    const firstDayOfMonth = new Date(currentYear, currentMonth, 1).getDay();
+    const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
 
-    const prevMonthDays = new Date(currentYear, currentMonth, 0).getDate();
-    for (let i = firstDayOfWeek - 1; i >= 0; i--) {
-      days.push({
-        day: prevMonthDays - i,
-        month: currentMonth === 0 ? 11 : currentMonth - 1,
-        year: currentMonth === 0 ? currentYear - 1 : currentYear,
-        isCurrentMonth: false,
-      });
+    for (let i = 0; i < firstDayOfMonth; i++) {
+      days.push({ empty: true });
     }
 
-    for (let d = 1; d <= daysInMonth; d++) {
-      days.push({
-        day: d,
-        month: currentMonth,
-        year: currentYear,
-        isCurrentMonth: true,
-        dateStr: `${currentYear}-${String(currentMonth + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`,
-      });
+    const today = new Date();
+    const currentMonthToday = today.getMonth();
+    const currentYearToday = today.getFullYear();
+
+    for (let i = 1; i <= daysInMonth; i++) {
+      const isFuture =
+        (currentYear === currentYearToday &&
+          currentMonth === currentMonthToday &&
+          i > today.getDate()) ||
+        currentYear > currentYearToday ||
+        (currentYear === currentYearToday && currentMonth > currentMonthToday);
+
+      const lookupKey = `${currentYear}-${currentMonth}-${i}`;
+      const dayData = processedSnapshots[lookupKey];
+
+      let profit = 0;
+      let growth = 0;
+      let lot = 0;
+      let status = "neutral";
+
+      if (isFuture) {
+        status = "future";
+      } else if (dayData) {
+        // Fallback property keys (Mencegah error jika EA memakai nama variabel berbeda)
+        profit = dayData.daily_profit || dayData.profit || 0;
+        growth =
+          dayData.daily_growth_percent ||
+          dayData.growth ||
+          dayData.growth_percent ||
+          0;
+        lot = dayData.daily_lots || dayData.lot || dayData.lots || 0;
+
+        if (profit > 0) status = "win";
+        else if (profit < 0) status = "loss";
+      }
+
+      days.push({ day: i, empty: false, status, profit, growth, lot });
     }
 
-    const remaining = 42 - days.length;
-    for (let d = 1; d <= remaining; d++) {
-      days.push({
-        day: d,
-        month: currentMonth === 11 ? 0 : currentMonth + 1,
-        year: currentMonth === 11 ? currentYear + 1 : currentYear,
-        isCurrentMonth: false,
-      });
-    }
-
+    while (days.length % 7 !== 0) days.push({ empty: true });
     return days;
-  }, [currentMonth, currentYear]);
-
-  // ── Get daily data (UNCHANGED) ──
-  const getDayData = (dateStr) => {
-    if (!selectedAccount || !profitHistory[selectedAccount]) return null;
-    return profitHistory[selectedAccount][dateStr] || null;
   };
 
-  // ── Compute summary (UNCHANGED) ──
-  const monthlySummary = useMemo(() => {
-    if (!selectedAccount || !profitHistory[selectedAccount]) {
-      return { totalProfit: 0, totalVolume: 0, avgGrowth: 0, tradingDays: 0 };
-    }
-    const monthPrefix = `${currentYear}-${String(currentMonth + 1).padStart(2, "0")}`;
-    let totalProfit = 0;
-    let totalVolume = 0;
-    let totalGrowth = 0;
-    let tradingDays = 0;
+  const monthlyDays = generateMonthlyData();
 
-    Object.entries(profitHistory[selectedAccount]).forEach(([dateStr, data]) => {
-      if (dateStr.startsWith(monthPrefix)) {
-        totalProfit += data.daily_profit || 0;
-        totalVolume += data.lot_volume || 0;
-        totalGrowth += data.percentage_growth || 0;
-        tradingDays++;
+  // --- KALKULASI FUND MANAGER METRICS ---
+  let grossProfit = 0;
+  let grossLoss = 0;
+  let maxDailyProfit = 0;
+  let maxDailyLoss = 0;
+  let winDays = 0;
+  let totalTradingDays = 0;
+
+  monthlyDays.forEach((d) => {
+    if (
+      !d.empty &&
+      d.status !== "future" &&
+      (d.profit !== 0 || d.lot > 0)
+    ) {
+      totalTradingDays++;
+      if (d.profit > 0) {
+        grossProfit += d.profit;
+        winDays++;
+        if (d.profit > maxDailyProfit) maxDailyProfit = d.profit;
+      } else if (d.profit < 0) {
+        const absLoss = Math.abs(d.profit);
+        grossLoss += absLoss;
+        if (absLoss > maxDailyLoss) maxDailyLoss = absLoss;
+      }
+    }
+  });
+
+  const netProfit = grossProfit - grossLoss;
+  const profitFactor =
+    grossLoss > 0
+      ? (grossProfit / grossLoss).toFixed(2)
+      : grossProfit > 0
+        ? "∞"
+        : "0.00";
+  const winRate =
+    totalTradingDays > 0
+      ? ((winDays / totalTradingDays) * 100).toFixed(1)
+      : 0;
+
+  const formatCur = (val) =>
+    new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+    }).format(val || 0);
+
+  // --- EXPORT PDF ---
+  const handleExportPdf = async () => {
+    if (!selectedAccountId || isExportingPdf) return;
+    setIsExportingPdf(true);
+    try {
+      // Build weeklyData sesuai format yang diharapkan pdf-generator
+      const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+      const monthStr = viewDate.toLocaleString("en-US", { month: "long" });
+
+      const weeklyData = weeks
+        .filter((weekDays) => weekDays.some((d) => !d.empty))
+        .map((weekDays) => {
+          const days = weekDays
+            .filter((d) => !d.empty)
+            .map((d) => {
+              const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, "0")}-${String(d.day).padStart(2, "0")}`;
+              return {
+                dayName: dayNames[new Date(currentYear, currentMonth, d.day).getDay()],
+                date: d.day,
+                dateStr,
+                growth: d.growth,
+                profit: d.profit,
+                lot: d.lot,
+                status: d.status,
+              };
+            });
+
+          const firstDay = days[0];
+          const lastDay = days[days.length - 1];
+
+          return {
+            startDate: `${monthStr} ${firstDay.date}`,
+            endDate: `${monthStr} ${lastDay.date}`,
+            days,
+            analysis: "",
+          };
+        });
+
+      // Build monthDaysWithData untuk heatmap
+      const monthDaysWithData = monthlyDays
+        .filter((d) => !d.empty && d.status !== "future")
+        .map((d) => ({
+          dateStr: `${currentYear}-${String(currentMonth + 1).padStart(2, "0")}-${String(d.day).padStart(2, "0")}`,
+          data: {
+            daily_profit: d.profit,
+            percentage_growth: d.growth,
+            daily_lots: d.lot,
+          },
+        }));
+
+      const summary = {
+        totalProfit: netProfit,
+        grossProfit,
+        grossLoss,
+        profitFactor,
+        winRate,
+        tradingDays: totalTradingDays,
+        maxDailyProfit,
+        maxDailyLoss,
+      };
+
+      const accountName = `Account ${selectedAccountId}`;
+
+      await generateMonthlyReport({
+        account: accountName,
+        month: monthStr,
+        year: currentYear,
+        summary,
+        initialDeposit: 10000,
+        weeklyData,
+        monthDaysWithData,
+      });
+    } catch (error) {
+      console.error("PDF export failed:", error);
+    } finally {
+      setIsExportingPdf(false);
+    }
+  };
+
+  // --- EXPAND/COLLAPSE LOGIC ---
+  const toggleWeek = (weekIndex) => {
+    setExpandedWeeks((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(weekIndex)) {
+        newSet.delete(weekIndex);
+      } else {
+        newSet.add(weekIndex);
+      }
+      return newSet;
+    });
+  };
+
+  // --- MINGGU UNTUK TAMPILAN EXPAND/COLLAPSE ---
+  const weeks = [];
+  for (let i = 0; i < monthlyDays.length; i += 7) {
+    weeks.push(monthlyDays.slice(i, i + 7));
+  }
+
+  // Hitung ringkasan per minggu
+  const weekSummaries = weeks.map((weekDays, weekIndex) => {
+    let weekProfit = 0;
+    let weekWins = 0;
+    let weekTradingDays = 0;
+
+    weekDays.forEach((d) => {
+      if (!d.empty && d.status !== "future" && (d.profit !== 0 || d.lot > 0)) {
+        weekTradingDays++;
+        weekProfit += d.profit;
+        if (d.profit > 0) weekWins++;
       }
     });
 
+    const weekWinRate =
+      weekTradingDays > 0 ? ((weekWins / weekTradingDays) * 100).toFixed(1) : 0;
+    const startDay = weekDays[0]?.day || "";
+    const endDay = weekDays[6]?.day || "";
+
     return {
-      totalProfit,
-      totalVolume: +totalVolume.toFixed(2),
-      avgGrowth: tradingDays > 0 ? +(totalGrowth / tradingDays).toFixed(2) : 0,
-      tradingDays,
+      weekIndex,
+      startDay,
+      endDay,
+      weekProfit,
+      weekWinRate,
+      weekTradingDays,
     };
-  }, [selectedAccount, profitHistory, currentMonth, currentYear]);
+  });
 
-  // ── Get days with data for current month (for mobile list) ──
-  const monthDaysWithData = useMemo(() => {
-    if (!selectedAccount || !profitHistory[selectedAccount]) return [];
-    const monthPrefix = `${currentYear}-${String(currentMonth + 1).padStart(2, "0")}`;
-    const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
-    const result = [];
-
-    for (let d = 1; d <= daysInMonth; d++) {
-      const dateStr = `${monthPrefix}-${String(d).padStart(2, "0")}`;
-      const data = profitHistory[selectedAccount][dateStr];
-      const isToday =
-        d === new Date().getDate() &&
-        currentMonth === new Date().getMonth() &&
-        currentYear === new Date().getFullYear();
-
-      result.push({
-        day: d,
-        dateStr,
-        date: new Date(currentYear, currentMonth, d),
-        isToday,
-        data: data || null,
-      });
-    }
-
-    return result;
-  }, [selectedAccount, profitHistory, currentMonth, currentYear]);
-
-  // ── Heat color (UNCHANGED) ──
-  const getHeatColor = useCallback((dayData) => {
-    if (!dayData) return "bg-transparent";
-    const profit = dayData.daily_profit || 0;
-    if (profit > 50) return "bg-emerald-600/60 border-emerald-400/40";
-    if (profit > 20) return "bg-emerald-500/40 border-emerald-400/30";
-    if (profit > 0) return "bg-emerald-500/20 border-emerald-400/20";
-    if (profit === 0) return "bg-slate-500/10 border-slate-500/20";
-    if (profit > -20) return "bg-red-500/20 border-red-400/20";
-    if (profit > -50) return "bg-red-500/40 border-red-400/30";
-    return "bg-red-600/60 border-red-400/40";
-  }, []);
-
-  const toggleExpand = useCallback((dateStr) => {
-    setExpandedDay((prev) => (prev === dateStr ? null : dateStr));
-  }, []);
-
-  if (loading) {
-    return <LoadingSpinner message="Initializing analytics matrix..." />;
-  }
-
-  if (ownedAccounts.length === 0) {
+  if (isLoading)
     return (
-      <EmptyState
-        icon={<AlertTriangle size={48} className="text-amber-500" />}
-        title="No EA Accounts"
-        description="You don't own any EA accounts yet. Please contact your admin for account assignment."
-      />
+      <div className="flex justify-center items-center h-screen font-bold text-[var(--primary)] animate-pulse">
+        Menyiapkan Data Analitik...
+      </div>
     );
-  }
-
-  const accInfo = selectedAccount ? accountData[selectedAccount] : null;
-  const botStartDate = accInfo?.metadata?.bot_start_date || null;
 
   return (
-    <div className="p-4 md:p-8 space-y-6 max-w-7xl mx-auto font-sans">
-      {/* ═══════════════════════════════════════════════════════════════════ */}
-      {/* HEADER - Terminal Jarvis Style                                     */}
-      {/* ═══════════════════════════════════════════════════════════════════ */}
-      <div className="bg-[var(--card-bg)] rounded-3xl border border-[var(--card-border)] p-6 md:p-8 shadow-sm animate-fadeInUp">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div className="flex items-center gap-5">
-            <div className="p-4 rounded-2xl bg-gradient-to-br from-cyan-500/20 to-blue-600/20 text-cyan-400 shadow-inner animate-glowPulse">
-              <BarChart3 size={36} />
-            </div>
-            <div>
-              <h1 className="text-2xl font-black text-[var(--foreground)] tracking-tight flex items-center gap-2">
-                Analytics & Performance
-                <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
-                  <Activity size={10} />
-                  LIVE
-                </span>
-              </h1>
-              <p className="text-sm text-[var(--muted-foreground)]">
-                Daily breakdown of Lot Volume, % Growth, and Nominal Profit.
-              </p>
-            </div>
+    <div className="p-4 md:p-8 space-y-6 max-w-7xl mx-auto font-sans transition-colors duration-300">
+      {/* HEADER & ACCOUNT SELECTOR */}
+      <div className="bg-[var(--card-bg)] rounded-3xl border border-[var(--card-border)] p-6 md:p-8 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+        <div className="flex items-center gap-5 w-full md:w-auto">
+          <div className="p-4 rounded-2xl bg-[var(--primary)]/10 text-[var(--primary)] shadow-inner">
+            <BarChart size={36} />
           </div>
-
-          {/* Account Selector */}
-          <div className="flex items-center gap-3">
-            <Cpu size={16} className="text-cyan-400 flex-shrink-0" />
-            <select
-              value={selectedAccount || ""}
-              onChange={(e) => setSelectedAccount(e.target.value)}
-              className="bg-[var(--muted)] border border-[var(--card-border)] text-[var(--foreground)] text-sm rounded-xl px-4 py-2.5 outline-none cursor-pointer font-mono font-bold min-w-[200px] focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 transition-all"
-            >
-              {ownedAccounts.map((accNum) => (
-                <option key={accNum} value={accNum}>
-                  {accNum}
-                </option>
-              ))}
-            </select>
+          <div>
+            <h1 className="text-2xl font-black text-[var(--foreground)] tracking-tight">
+              Performance Analytics
+            </h1>
+            <p className="text-sm text-[var(--muted-foreground)]">
+              Analisis mendalam per akun dan histori bulanan.
+            </p>
           </div>
         </div>
 
-        {/* Account Info Row */}
-        {accInfo && (
-          <div className="mt-4 flex flex-wrap gap-2 sm:gap-3 text-[10px] text-[var(--muted-foreground)] uppercase tracking-wider">
-            <span className="px-3 py-1 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-bold">
-              VPS: {accInfo.metadata?.vps_name || "N/A"}
+        <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
+          <div className="w-full sm:w-auto bg-[var(--muted)]/50 p-3.5 rounded-2xl border border-[var(--card-border)] flex flex-col gap-1.5 shadow-sm">
+            <span className="text-[10px] font-bold text-[var(--muted-foreground)] uppercase tracking-wider pl-1">
+              Pilih Akun Analisis
             </span>
-            <span className="px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold">
-              Balance: ${Number(accInfo.balance || 0).toLocaleString()}
-            </span>
-            {botStartDate && (
-              <span className="px-3 py-1 rounded-full bg-purple-500/10 text-purple-400 border border-purple-500/20 font-bold">
-                Started: {new Date(botStartDate).toLocaleDateString()}
+            <div className="relative">
+              <select
+                value={selectedAccountId}
+                onChange={(e) => setSelectedAccountId(e.target.value)}
+                className="appearance-none w-full sm:w-64 bg-[var(--background)] border border-[var(--card-border)] text-[var(--foreground)] font-bold text-sm rounded-xl pl-4 pr-10 py-3 outline-none focus:ring-2 focus:ring-[var(--primary)] cursor-pointer shadow-sm transition-all hover:border-[var(--primary)]/50"
+              >
+                {accountsList.map((acc) => (
+                  <option key={acc} value={acc}>
+                    Account: {acc}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown
+                size={16}
+                className="absolute right-4 top-3.5 text-[var(--muted-foreground)] pointer-events-none"
+              />
+            </div>
+          </div>
+
+          {/* PDF Export Button */}
+          <div className="flex items-end">
+            <button
+              onClick={handleExportPdf}
+              disabled={isExportingPdf || !selectedAccountId}
+              className="flex items-center gap-2 bg-[var(--primary)] hover:bg-[var(--primary)]/90 disabled:opacity-50 text-white font-bold py-3 px-6 rounded-xl shadow-sm transition-all"
+            >
+              {isExportingPdf ? (
+                <Loader2 size={18} className="animate-spin" />
+              ) : (
+                <Download size={18} />
+              )}
+              <span className="text-sm">
+                {isExportingPdf ? "Generating..." : "Export PDF"}
               </span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* NAVIGATOR BULAN */}
+      <div className="flex justify-between items-center bg-[var(--card-bg)] p-4 rounded-2xl border border-[var(--card-border)] shadow-sm">
+        <button
+          onClick={goToPrevMonth}
+          className="p-2 hover:bg-[var(--muted)] rounded-xl transition-colors text-[var(--foreground)] border border-[var(--card-border)] shadow-sm"
+        >
+          <ChevronLeft size={20} />
+        </button>
+        <div className="flex items-center gap-3">
+          <CalendarDays size={20} className="text-[var(--primary)]" />
+          <h2 className="text-lg font-black text-[var(--foreground)] uppercase tracking-widest">
+            {monthName}
+          </h2>
+        </div>
+        <button
+          onClick={goToNextMonth}
+          disabled={
+            currentYear === new Date().getFullYear() &&
+            currentMonth === new Date().getMonth()
+          }
+          className="p-2 hover:bg-[var(--muted)] disabled:opacity-30 disabled:hover:bg-transparent rounded-xl transition-colors text-[var(--foreground)] border border-[var(--card-border)] shadow-sm"
+        >
+          <ChevronRight size={20} />
+        </button>
+      </div>
+
+      {/* FUND MANAGER SUMMARY */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        {[
+          {
+            label: "Net Profit",
+            val: formatCur(netProfit),
+            icon: BadgeDollarSign,
+            c: "text-blue-500",
+          },
+          {
+            label: "Gross Profit",
+            val: formatCur(grossProfit),
+            icon: TrendingUp,
+            c: "text-green-500",
+          },
+          {
+            label: "Gross Loss",
+            val: `-${formatCur(grossLoss)}`,
+            icon: TrendingDown,
+            c: "text-red-500",
+          },
+          {
+            label: "Profit Factor",
+            val: profitFactor,
+            icon: Activity,
+            c: "text-purple-500",
+          },
+          {
+            label: "Win Rate",
+            val: `${winRate}%`,
+            icon: PieChart,
+            c: "text-orange-500",
+          },
+          {
+            label: "Trades",
+            val: `${totalTradingDays} Days`,
+            icon: Target,
+            c: "text-[var(--foreground)]",
+          },
+        ].map((item, i) => (
+          <div
+            key={i}
+            className="bg-[var(--card-bg)] p-4 rounded-2xl border border-[var(--card-border)] shadow-sm hover:border-[var(--primary)] transition-all"
+          >
+            <div className="flex items-center gap-2 mb-2">
+              <item.icon size={14} className={item.c} />
+              <span className="text-[9px] font-bold text-[var(--muted-foreground)] uppercase tracking-wider">
+                {item.label}
+              </span>
+            </div>
+            <div
+              className={`text-lg font-black tracking-tight ${
+                item.label === "Gross Loss"
+                  ? "text-red-500"
+                  : "text-[var(--foreground)]"
+              }`}
+            >
+              {item.val}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-[var(--card-bg)] p-5 rounded-2xl border border-[var(--card-border)] shadow-sm flex justify-between items-center hover:border-green-500/50 transition-colors">
+          <div>
+            <span className="text-xs font-bold text-[var(--muted-foreground)] uppercase flex items-center gap-1.5">
+              <TrendingUp size={14} className="text-green-500" /> Max Daily
+              Profit
+            </span>
+            <span className="text-2xl font-black text-green-500 mt-1 block">
+              {formatCur(maxDailyProfit)}
+            </span>
+          </div>
+        </div>
+        <div className="bg-[var(--card-bg)] p-5 rounded-2xl border border-[var(--card-border)] shadow-sm flex justify-between items-center hover:border-red-500/50 transition-colors">
+          <div>
+            <span className="text-xs font-bold text-[var(--muted-foreground)] uppercase flex items-center gap-1.5">
+              <ShieldAlert size={14} className="text-red-500" /> Max Daily Loss
+            </span>
+            <span className="text-2xl font-black text-red-500 mt-1 block">
+              {formatCur(maxDailyLoss)}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* HEATMAP KALENDER */}
+      <div className="bg-[var(--card-bg)] rounded-3xl border border-[var(--card-border)] p-6 md:p-8 shadow-sm relative overflow-hidden transition-colors">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
+          <h3 className="font-bold text-xl md:text-2xl text-[var(--foreground)] flex items-center gap-2 tracking-tight">
+            <CalendarDays className="text-[var(--primary)]" /> {monthName}{" "}
+            Heatmap
+          </h3>
+          <div className="flex items-center gap-4 text-[10px] font-bold bg-[var(--background)] px-4 py-2 rounded-xl border border-[var(--card-border)] shadow-sm">
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-[#10b981]"></div> PROFIT
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-[#ef4444]"></div> LOSS
+            </div>
+          </div>
+        </div>
+
+        {/* ===== DESKTOP VIEW (md+) ===== */}
+        <div className="hidden md:block">
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+              gap: "12px",
+            }}
+            className="mb-3 text-center"
+          >
+            {["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"].map(
+              (day, i) => (
+                <div
+                  key={i}
+                  className="text-xs font-black text-[var(--muted-foreground)] uppercase tracking-widest"
+                >
+                  {day}
+                </div>
+              )
             )}
           </div>
-        )}
-      </div>
 
-      {/* ═══════════════════════════════════════════════════════════════════ */}
-      {/* MONTHLY SUMMARY CARDS - Enhanced with glow effects                */}
-      {/* ═══════════════════════════════════════════════════════════════════ */}
-      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <div className="animate-fadeInUp stagger-1">
-          <StatCard
-            icon={<DollarSign size={20} className="text-emerald-400" />}
-            label="Total Profit"
-            value={`$${monthlySummary.totalProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-            sub={`${monthlySummary.tradingDays} trading days`}
-            accent="emerald"
-          />
-        </div>
-        <div className="animate-fadeInUp stagger-2">
-          <StatCard
-            icon={<Scale size={20} className="text-blue-400" />}
-            label="Lot Volume"
-            value={monthlySummary.totalVolume.toFixed(2)}
-            sub="Lots traded"
-            accent="blue"
-          />
-        </div>
-        <div className="animate-fadeInUp stagger-3">
-          <StatCard
-            icon={<TrendingUp size={20} className="text-purple-400" />}
-            label="Avg Daily Growth"
-            value={`${monthlySummary.avgGrowth}%`}
-            sub="Per trading day"
-            accent="purple"
-          />
-        </div>
-        <div className="animate-fadeInUp stagger-4">
-          <StatCard
-            icon={<Wallet size={20} className="text-amber-400" />}
-            label="Account"
-            value={selectedAccount || "—"}
-            sub={accInfo?.metadata?.vps_name || "No VPS"}
-            accent="amber"
-          />
-        </div>
-      </div>
+          {/* Grid minggu demi minggu untuk desktop */}
+          {weeks.map((weekDays, weekIndex) => {
+            const hasNonEmptyDays = weekDays.some((d) => !d.empty);
+            if (!hasNonEmptyDays) return null;
 
-      {/* ═══════════════════════════════════════════════════════════════════ */}
-      {/* CALENDAR / LIST - Desktop = Grid, Mobile = Expandable List        */}
-      {/* ═══════════════════════════════════════════════════════════════════ */}
-      <div className="bg-[var(--card-bg)] border border-[var(--card-border)] rounded-3xl overflow-hidden animate-fadeInUp">
-        {/* Month Navigator */}
-        <div className="p-4 sm:p-6 border-b border-[var(--card-border)] flex items-center justify-between">
-          <button
-            onClick={prevMonth}
-            className="p-2 rounded-xl hover:bg-[var(--muted)] transition-colors text-[var(--foreground)] active:scale-95"
-          >
-            <ChevronLeft size={20} />
-          </button>
-          <h2 className="text-base sm:text-lg font-black text-[var(--foreground)] flex items-center gap-2">
-            <Calendar size={20} className="text-cyan-400" />
-            {monthNames[currentMonth]} {currentYear}
-          </h2>
-          <button
-            onClick={nextMonth}
-            className="p-2 rounded-xl hover:bg-[var(--muted)] transition-colors text-[var(--foreground)] active:scale-95"
-          >
-            <ChevronRight size={20} />
-          </button>
-        </div>
-
-        {/* ═══════ DESKTOP: Calendar Grid (unchanged logic) ═══════ */}
-        <div className="hidden sm:block p-4">
-          {/* Day headers */}
-          <div className="grid grid-cols-7 gap-1 mb-2">
-            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
+            return (
               <div
-                key={d}
-                className="text-center text-[10px] font-bold text-[var(--muted-foreground)] uppercase tracking-wider py-2"
+                key={weekIndex}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+                  gap: "12px",
+                }}
+                className="mb-3"
               >
-                {d}
+                {weekDays.map((d, i) => {
+                  const isWin = d.status === "win";
+                  const isLoss = d.status === "loss";
+                  const isNeutral = d.status === "neutral";
+                  const isFuture = d.status === "future";
+
+                  return (
+                    <div
+                      key={i}
+                      style={{
+                        ...(isWin
+                          ? {
+                              backgroundColor: "#10b981",
+                              borderColor: "#10b981",
+                              color: "white",
+                            }
+                          : {}),
+                        ...(isLoss
+                          ? {
+                              backgroundColor: "#ef4444",
+                              borderColor: "#ef4444",
+                              color: "white",
+                            }
+                          : {}),
+                      }}
+                      className={`
+                        relative flex flex-col justify-between p-3 rounded-2xl aspect-[4/3] transition-all border
+                        ${d.empty ? "opacity-0 pointer-events-none border-transparent" : "hover:-translate-y-1 hover:shadow-lg"}
+                        ${isWin || isLoss ? "shadow-md text-white" : ""}
+                        ${isNeutral ? "bg-[var(--background)] border-[var(--card-border)]" : ""}
+                        ${isFuture ? "bg-[var(--muted)]/20 border-[var(--card-border)] border-dashed opacity-50" : ""}
+                      `}
+                    >
+                      {!d.empty && (
+                        <>
+                          <span
+                            className={`text-[11px] font-bold ${
+                              isWin || isLoss
+                                ? "text-white"
+                                : "text-[var(--muted-foreground)]"
+                            }`}
+                          >
+                            {d.day}
+                          </span>
+
+                          <div className="flex-grow flex items-center justify-center">
+                            <span
+                              className={`text-xl font-black tracking-tighter ${
+                                isWin || isLoss
+                                  ? "text-white"
+                                  : isFuture
+                                    ? "opacity-0"
+                                    : "text-[var(--foreground)]"
+                              }`}
+                            >
+                              {isNeutral && d.lot === 0
+                                ? "0.00%"
+                                : d.growth > 0
+                                  ? `+${d.growth.toFixed(2)}%`
+                                  : `${d.growth.toFixed(2)}%`}
+                            </span>
+                          </div>
+
+                          <div
+                            className={`flex flex-col text-[10px] font-bold leading-snug mt-1 ${
+                              isWin || isLoss
+                                ? "text-white/90"
+                                : "text-[var(--muted-foreground)]"
+                            } ${
+                              isFuture || (isNeutral && d.lot === 0)
+                                ? "opacity-0"
+                                : ""
+                            }`}
+                          >
+                            <span>${Math.abs(d.profit).toFixed(2)}</span>
+                            <span>{d.lot.toFixed(2)} L</span>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-            ))}
+            );
+          })}
+        </div>
+
+        {/* ===== MOBILE VIEW (< md) - GRID + EXPAND/COLLAPSE ===== */}
+        <div className="block md:hidden">
+          {/* Mobile: Header Hari selalu tampil */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+              gap: "4px",
+            }}
+            className="mb-2 text-center"
+          >
+            {["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"].map(
+              (day, i) => (
+                <div
+                  key={i}
+                  className="text-[8px] font-black text-[var(--muted-foreground)] uppercase tracking-widest"
+                >
+                  {day}
+                </div>
+              )
+            )}
           </div>
 
-          {/* Day cells */}
-          <div className="grid grid-cols-7 gap-1.5">
-            {calendarDays.map((dayObj, idx) => {
-              const dayData = dayObj.dateStr ? getDayData(dayObj.dateStr) : null;
-              const isToday =
-                dayObj.isCurrentMonth &&
-                dayObj.day === new Date().getDate() &&
-                currentMonth === new Date().getMonth() &&
-                currentYear === new Date().getFullYear();
+          {/* Mobile: Grid selalu tampil - Panah + Grid dalam satu baris */}
+          <div className="space-y-3">
+            {weeks.map((weekDays, weekIndex) => {
+              const summary = weekSummaries[weekIndex];
+              const isExpanded = expandedWeeks.has(weekIndex);
+
+              const hasNonEmptyDays = weekDays.some((d) => !d.empty);
+              if (!hasNonEmptyDays) return null;
 
               return (
-                <div
-                  key={idx}
-                  className={`relative rounded-xl border p-2 min-h-[100px] transition-all calendar-cell-glow ${
-                    dayObj.isCurrentMonth
-                      ? `${getHeatColor(dayData)} cursor-default`
-                      : "bg-[var(--background)]/30 border-transparent opacity-30"
-                  } ${isToday ? "today-indicator ring-2 ring-cyan-500 ring-offset-1 ring-offset-[var(--card-bg)]" : ""}`}
-                >
-                  <span
-                    className={`text-xs font-bold ${
-                      isToday
-                        ? "text-cyan-400"
-                        : dayObj.isCurrentMonth
-                        ? "text-[var(--foreground)]"
-                        : "text-[var(--muted-foreground)]"
+                <div key={weekIndex}>
+                  {/* Satu baris: Panah + Grid 7 hari */}
+                  <div
+                    className={`flex items-center gap-2 p-2 rounded-xl cursor-pointer transition-all ${
+                      isExpanded
+                        ? "bg-[var(--primary)]/10 border border-[var(--primary)]/30"
+                        : "bg-[var(--muted)]/30 hover:bg-[var(--muted)]/50 border border-transparent"
                     }`}
+                    onClick={() => toggleWeek(weekIndex)}
                   >
-                    {dayObj.day}
-                  </span>
+                    {/* Panah */}
+                    <div className="flex items-center justify-center w-5 h-5 shrink-0">
+                      {isExpanded ? (
+                        <ChevronDown size={16} className="text-[var(--primary)]" />
+                      ) : (
+                        <ChevronRight size={16} className="text-[var(--muted-foreground)]" />
+                      )}
+                    </div>
 
-                  {/* Daily Data */}
-                  {dayObj.isCurrentMonth && dayData && (
-                    <div className="mt-1 space-y-0.5">
-                      <div className="flex items-center gap-1">
-                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
-                        <span className="text-[9px] text-emerald-400 font-bold">
-                          ${Number(dayData.daily_profit || 0).toFixed(0)}
+                    {/* Grid 7 hari */}
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+                        gap: "3px",
+                      }}
+                      className="flex-1"
+                    >
+                      {weekDays.map((d, i) => {
+                        const isWin = d.status === "win";
+                        const isLoss = d.status === "loss";
+                        const isNeutral = d.status === "neutral";
+                        const isFuture = d.status === "future";
+
+                        return (
+                          <div
+                            key={i}
+                            style={{
+                              ...(isWin
+                                ? {
+                                    backgroundColor: "#10b981",
+                                    borderColor: "#10b981",
+                                    color: "white",
+                                  }
+                                : {}),
+                              ...(isLoss
+                                ? {
+                                    backgroundColor: "#ef4444",
+                                    borderColor: "#ef4444",
+                                    color: "white",
+                                  }
+                                : {}),
+                            }}
+                            className={`
+                              relative flex flex-col items-center justify-between p-1 rounded-lg aspect-square transition-all border
+                              ${d.empty ? "opacity-0 pointer-events-none border-transparent" : ""}
+                              ${isWin || isLoss ? "shadow-md text-white" : ""}
+                              ${isNeutral ? "bg-[var(--background)] border-[var(--card-border)]" : ""}
+                              ${isFuture ? "bg-[var(--muted)]/20 border-[var(--card-border)] border-dashed opacity-50" : ""}
+                            `}
+                          >
+                            {!d.empty && (
+                              <>
+                                <span
+                                  className={`text-[7px] font-bold leading-none ${
+                                    isWin || isLoss
+                                      ? "text-white"
+                                      : "text-[var(--muted-foreground)]"
+                                  }`}
+                                >
+                                  {d.day}
+                                </span>
+
+                                <span
+                                  className={`text-[8px] font-black tracking-tighter leading-none ${
+                                    isWin || isLoss
+                                      ? "text-white"
+                                      : isFuture
+                                        ? "opacity-0"
+                                        : "text-[var(--foreground)]"
+                                  }`}
+                                >
+                                  {isNeutral && d.lot === 0
+                                    ? "0.00%"
+                                    : d.growth > 0
+                                      ? `+${d.growth.toFixed(2)}%`
+                                      : `${d.growth.toFixed(2)}%`}
+                                </span>
+                              </>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Detail Hari (saat expanded) - Dropdown */}
+                  {isExpanded && (
+                    <div className="mt-2 bg-[var(--background)] rounded-xl border border-[var(--card-border)] p-3 space-y-2">
+                      <div className="flex items-center justify-between mb-2 px-1">
+                        <span className="text-[10px] font-bold text-[var(--muted-foreground)] uppercase tracking-wider">
+                          Minggu {weekIndex + 1} ({summary.startDay} - {summary.endDay})
+                        </span>
+                        <span className={`text-[10px] font-bold ${summary.weekProfit >= 0 ? "text-green-500" : "text-red-500"}`}>
+                          {formatCur(summary.weekProfit)} | WR: {summary.weekWinRate}%
                         </span>
                       </div>
-                      <div className="flex items-center gap-1">
-                        <div className="w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />
-                        <span className="text-[9px] text-blue-400 font-bold">
-                          {Number(dayData.lot_volume || 0).toFixed(1)}L
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <div className="w-1.5 h-1.5 rounded-full bg-purple-400 flex-shrink-0" />
-                        <span className="text-[9px] text-purple-400 font-bold">
-                          {Number(dayData.percentage_growth || 0).toFixed(2)}%
-                        </span>
-                      </div>
+                      {weekDays.map((d, i) => {
+                        if (d.empty) return null;
+                        
+                        const isWin = d.status === "win";
+                        const isLoss = d.status === "loss";
+                        const isNeutral = d.status === "neutral";
+                        const isFuture = d.status === "future";
+
+                        return (
+                          <div
+                            key={i}
+                            className={`flex items-center justify-between px-3 py-2 rounded-lg text-xs ${
+                              isWin
+                                ? "bg-[#10b981]/10 border border-[#10b981]/30"
+                                : isLoss
+                                  ? "bg-[#ef4444]/10 border border-[#ef4444]/30"
+                                  : isFuture
+                                    ? "opacity-40"
+                                    : "bg-[var(--muted)]/30 border border-[var(--card-border)]"
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-[var(--foreground)]">
+                                {d.day}
+                              </span>
+                              <span
+                                className={`font-black ${
+                                  isWin
+                                    ? "text-[#10b981]"
+                                    : isLoss
+                                      ? "text-[#ef4444]"
+                                      : "text-[var(--foreground)]"
+                                }`}
+                              >
+                                {isFuture
+                                  ? "-"
+                                  : isNeutral && d.lot === 0
+                                    ? "0.00%"
+                                    : d.growth > 0
+                                      ? `+${d.growth.toFixed(2)}%`
+                                      : `${d.growth.toFixed(2)}%`}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-3 font-bold text-[var(--muted-foreground)]">
+                              <span>
+                                {isFuture ? "-" : `$${Math.abs(d.profit).toFixed(2)}`}
+                              </span>
+                              <span>
+                                {isFuture ? "-" : `${d.lot.toFixed(2)} L`}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
               );
             })}
           </div>
-        </div>
-
-        {/* ═══════ MOBILE: Expandable List View ═══════ */}
-        <div className="sm:hidden">
-          {monthDaysWithData.length === 0 ? (
-            <div className="p-8 text-center text-[var(--muted-foreground)] text-sm">
-              No data for this month
-            </div>
-          ) : (
-            <div className="divide-y divide-[var(--card-border)]">
-              {monthDaysWithData.map((dayObj) => {
-                const dayData = dayObj.data;
-                const hasData = !!dayData;
-                const isExpanded = expandedDay === dayObj.dateStr;
-                const profit = dayData?.daily_profit || 0;
-                const isPositive = profit > 0;
-                const isNegative = profit < 0;
-
-                return (
-                  <div key={dayObj.dateStr} className="animate-fadeIn">
-                    {/* Row Header */}
-                    <button
-                      onClick={() => hasData && toggleExpand(dayObj.dateStr)}
-                      className={`w-full flex items-center justify-between p-4 transition-all active:bg-[var(--muted)] ${
-                        dayObj.isToday ? "bg-cyan-500/5" : ""
-                      }`}
-                      disabled={!hasData}
-                    >
-                      <div className="flex items-center gap-3">
-                        {/* Day number with heatmap dot */}
-                        <div className="relative">
-                          <span
-                            className={`text-sm font-bold ${
-                              dayObj.isToday
-                                ? "text-cyan-400"
-                                : "text-[var(--foreground)]"
-                            }`}
-                          >
-                            {dayObj.day}
-                          </span>
-                          {dayObj.isToday && (
-                            <span className="absolute -top-1 -right-1 w-2 h-2 bg-cyan-400 rounded-full animate-pulse" />
-                          )}
-                        </div>
-
-                        {/* Date label */}
-                        <div className="flex flex-col items-start">
-                          <span className="text-[10px] text-[var(--muted-foreground)] font-medium">
-                            {dayObj.date.toLocaleDateString("en-US", {
-                              weekday: "short",
-                            })}
-                          </span>
-                          {hasData && (
-                            <span className="text-[10px] text-[var(--muted-foreground)]">
-                              {dayObj.dateStr}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-3">
-                        {/* Profit indicator */}
-                        {hasData ? (
-                          <>
-                            <div className="flex items-center gap-1">
-                              {isPositive ? (
-                                <ArrowUpRight size={12} className="text-emerald-400" />
-                              ) : isNegative ? (
-                                <ArrowDownRight size={12} className="text-red-400" />
-                              ) : null}
-                              <span
-                                className={`text-xs font-bold font-mono ${
-                                  isPositive
-                                    ? "text-emerald-400"
-                                    : isNegative
-                                    ? "text-red-400"
-                                    : "text-[var(--muted-foreground)]"
-                                }`}
-                              >
-                                {isPositive ? "+" : ""}${Number(profit).toFixed(2)}
-                              </span>
-                            </div>
-
-                            {/* Expand chevron */}
-                            <ChevronDown
-                              size={16}
-                              className={`text-[var(--muted-foreground)] transition-transform duration-200 ${
-                                isExpanded ? "rotate-180" : ""
-                              }`}
-                            />
-                          </>
-                        ) : (
-                          <span className="text-[10px] text-[var(--muted-foreground)] italic">
-                            No data
-                          </span>
-                        )}
-                      </div>
-                    </button>
-
-                    {/* Expanded Detail Panel */}
-                    {isExpanded && hasData && (
-                      <div className="animate-slideDown bg-[var(--muted)]/50 border-t border-[var(--card-border)]">
-                        <div className="p-4 space-y-3">
-                          {/* Detail Grid */}
-                          <div className="grid grid-cols-3 gap-2">
-                            {/* Gain from Initial Deposit */}
-                            <div className="bg-[var(--card-bg)] rounded-xl p-3 border border-purple-500/10">
-                              <div className="flex items-center gap-1.5 mb-1.5">
-                                <TrendingUp size={12} className="text-purple-400" />
-                                <span className="text-[9px] font-bold text-[var(--muted-foreground)] uppercase tracking-wider">
-                                  Gain %
-                                </span>
-                              </div>
-                              <span className="text-sm font-black text-purple-400 font-mono">
-                                {Number(dayData.percentage_growth || 0).toFixed(2)}%
-                              </span>
-                            </div>
-
-                            {/* Nominal Gain Daily */}
-                            <div className="bg-[var(--card-bg)] rounded-xl p-3 border border-emerald-500/10">
-                              <div className="flex items-center gap-1.5 mb-1.5">
-                                <DollarSign size={12} className="text-emerald-400" />
-                                <span className="text-[9px] font-bold text-[var(--muted-foreground)] uppercase tracking-wider">
-                                  Profit
-                                </span>
-                              </div>
-                              <span
-                                className={`text-sm font-black font-mono ${
-                                  profit > 0
-                                    ? "text-emerald-400"
-                                    : profit < 0
-                                    ? "text-red-400"
-                                    : "text-[var(--muted-foreground)]"
-                                }`}
-                              >
-                                {profit > 0 ? "+" : ""}${Number(profit).toFixed(2)}
-                              </span>
-                            </div>
-
-                            {/* Lot Volume Daily */}
-                            <div className="bg-[var(--card-bg)] rounded-xl p-3 border border-blue-500/10">
-                              <div className="flex items-center gap-1.5 mb-1.5">
-                                <BarChart3 size={12} className="text-blue-400" />
-                                <span className="text-[9px] font-bold text-[var(--muted-foreground)] uppercase tracking-wider">
-                                  Lots
-                                </span>
-                              </div>
-                              <span className="text-sm font-black text-blue-400 font-mono">
-                                {Number(dayData.lot_volume || 0).toFixed(2)}
-                              </span>
-                            </div>
-                          </div>
-
-                          {/* Balance row */}
-                          {dayData.balance > 0 && (
-                            <div className="flex items-center justify-between px-1">
-                              <span className="text-[10px] text-[var(--muted-foreground)] uppercase tracking-wider font-bold">
-                                Balance
-                              </span>
-                              <span className="text-xs font-bold text-[var(--foreground)] font-mono">
-                                ${Number(dayData.balance || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* ═══════ Legend ═══════ */}
-        <div className="px-4 sm:px-6 pb-4 sm:pb-6 flex flex-wrap items-center gap-3 sm:gap-4 text-[10px]">
-          <span className="text-[var(--muted-foreground)] font-bold uppercase tracking-wider">
-            Heatmap:
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded bg-red-600/60 border border-red-400/40" />
-            {`Loss >$50`}
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded bg-red-500/20 border border-red-400/20" />
-            {`Loss <$20`}
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded bg-slate-500/10 border border-slate-500/20" />
-            Netral
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded bg-emerald-500/20 border border-emerald-400/20" />
-            {`Profit <$20`}
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded bg-emerald-600/60 border border-emerald-400/40" />
-            {`Profit >$50`}
-          </span>
         </div>
       </div>
     </div>
