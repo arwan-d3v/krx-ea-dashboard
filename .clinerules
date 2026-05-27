@@ -1,0 +1,12 @@
+# PROTOKOL STANDAR AGEN CLINE
+
+[KEAMANAN & KUALITAS]
+- Dilarang keras melakukan hardcode kredensial, API key, atau token di dalam file .py maupun frontend.
+- Tulis kode dengan efisiensi tinggi dan hindari kompleksitas logika yang berbelit-belit agar lolos sensor SonarCloud.
+
+[DESAIN & ESTETIKA]
+- Setiap kali Anda diminta membuat atau memperbarui antarmuka Dashboard, tampilannya harus se canggih dan semodern mungkin.
+- Terapkan estetika "terminal jarvis" (tema gelap modern, aksen high-tech, visualisasi data real-time, dan tata letak berbasis grid teknis).
+
+[WORKFLOW]
+- Gunakan Ruflo MCP untuk selalu memeriksa struktur file yang ada sebelum menimpa script lama.

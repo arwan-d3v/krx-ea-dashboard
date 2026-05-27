@@ -1,0 +1,9 @@
+language: "id"
+reviews:
+  profile: "professional"
+  high_level_summary: true
+  path_filters:
+    - "!node_modules/**"
+    - "!.venv/**"
+chat:
+  auto_reply: true

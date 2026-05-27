@@ -1,0 +1,8 @@
+{
+  "cline.mcpServers": {
+    "ruflo-swarm": {
+      "command": "npx",
+      "args": ["ruflo@latest", "mcp", "start"]
+    }
+  }
+}
