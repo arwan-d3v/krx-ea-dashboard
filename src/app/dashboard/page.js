@@ -332,8 +332,8 @@ export default function Dashboard() {
   const snapshots = currentAccountData.snapshots || {};
   const realDailyHistory = Object.keys(snapshots).sort((a, b) => b - a).slice(0, 5).map(ts => {
       let timeMs = parseInt(ts); if (timeMs < 10000000000) timeMs = timeMs * 1000; 
-      const dateObj = new Date(timeMs); const dayNames = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
-      return { id: ts, date: dayNames[dateObj.getDay()], profit: snapshots[ts].daily_profit || 0, growth: snapshots[ts].daily_growth_percent || 0, lot: snapshots[ts].daily_lots || 0 };
+      const dateObj = new Date(timeMs + 28800000); const dayNames = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+      return { id: ts, date: dayNames[dateObj.getUTCDay()], profit: snapshots[ts].daily_profit || 0, growth: snapshots[ts].daily_growth_percent || 0, lot: snapshots[ts].daily_lots || 0 };
   });
 
   const getTerminalLogColor = (type) => {
@@ -440,9 +440,14 @@ export default function Dashboard() {
                  disabled={accountsList.length === 0}
                >
                  {accountsList.length === 0 && <option value="">(Kosong)</option>}
-                 {accountsList.map(acc => (
-                   <option key={acc} value={acc}>Acc: {acc}</option>
-                 ))}
+                 {accountsList.map(acc => {
+                   const investorName = allAccountsData[acc]?.metadata?.investor_name || "";
+                   return (
+                     <option key={acc} value={acc}>
+                       {investorName ? `${acc} - ${investorName}` : `Acc: ${acc}`}
+                     </option>
+                   );
+                 })}
                </select>
                <ChevronDown size={14} className="absolute right-3 top-3 text-[var(--muted-foreground)] pointer-events-none" />
              </div>

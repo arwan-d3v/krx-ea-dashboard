@@ -12,6 +12,7 @@ import {
 import { useAuth } from "../app/context/AuthContext";
 import { auth } from "../lib/firebase";
 import { signOut } from "firebase/auth";
+import LivePortfolioBadge from "./LivePortfolioBadge";
 
 // ============================================================================
 // DICTIONARY NAVIGASI (EN & ID)
@@ -96,7 +97,7 @@ export default function AppNavbar() {
       { href: "/analytics", icon: <BarChart size={18} />, label: t.analytics },
     ];
 
-    if (role === "admin" || role === "super_admin") {
+    if (role === "super_admin") {
       items.push(
         { type: "divider" },
         { href: "/create-license", icon: <Key size={18} />, label: t.license },
@@ -104,7 +105,7 @@ export default function AppNavbar() {
       );
     }
 
-    if (role === "investor") {
+    if (role === "investor" || role === "admin") {
       items.push(
         { type: "divider" },
         { href: "/subscription-area", icon: <CreditCard size={18} />, label: t.subscription, color: "purple" }
@@ -114,9 +115,7 @@ export default function AppNavbar() {
     if (role === "admin") {
       items.push(
         { type: "divider" },
-        { href: "/group-manager", icon: <Folders size={18} />, label: t.groups, color: "purple" },
-        { href: "/ea-manager", icon: <Cpu size={18} />, label: t.ea_control, color: "blue" },
-        { href: "/subscription-area", icon: <CreditCard size={18} />, label: t.subscription, color: "purple" }
+        { href: "/ea-manager", icon: <Cpu size={18} />, label: t.ea_control, color: "blue" }
       );
     }
 
@@ -160,6 +159,11 @@ export default function AppNavbar() {
 
             <div className="w-px h-6 bg-[var(--card-border)] mx-2" />
 
+            {/* Live Portfolio Badge Desktop */}
+            <div className="hidden sm:block">
+              <LivePortfolioBadge lang={lang} compact />
+            </div>
+
             {/* Language Toggle Desktop */}
             <div className="flex items-center bg-[var(--muted)]/50 p-1 rounded-lg border border-[var(--card-border)] mr-2">
               <button onClick={() => setLang('en')} className={`px-2 py-0.5 text-[10px] font-bold rounded ${lang === 'en' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500'}`}>EN</button>
@@ -172,6 +176,8 @@ export default function AppNavbar() {
 
           {/* MOBILE NAVIGATION TOGGLE */}
           <div className="flex lg:hidden items-center gap-2">
+            {/* Live Portfolio Badge Mobile */}
+            <LivePortfolioBadge lang={lang} compact />
             <button onClick={() => setLang(lang === 'en' ? 'id' : 'en')} className="p-2 rounded-xl text-xs font-bold text-blue-500 bg-blue-500/10 border border-blue-500/20">{lang.toUpperCase()}</button>
             <button onClick={toggleTheme} className="p-2 rounded-xl text-[var(--muted-foreground)] hover:bg-[var(--muted)]">{isDark ? <Sun size={20} /> : <Moon size={20} />}</button>
             <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2 rounded-xl text-[var(--foreground)] bg-[var(--muted)]">{isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}</button>
