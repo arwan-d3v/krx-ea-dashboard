@@ -12,12 +12,26 @@ import {
   AlertCircle,
   ExternalLink,
   Mail,
-  KeyRound
+  KeyRound,
+  Lock
 } from "lucide-react";
 import { db } from "../../lib/firebase";
 import { ref, onValue, update, remove } from "firebase/database";
+import { useAuth } from "../context/AuthContext";
+import { useRouter } from "next/navigation";
 
 export default function LicenseManager() {
+  const { role, loading: isAuthLoading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!isAuthLoading && role && role !== "super_admin") {
+      router.push("/dashboard");
+    }
+  }, [role, isAuthLoading, router]);
+
+  if (isAuthLoading) return <div className="flex h-screen items-center justify-center bg-[#030712] font-mono text-blue-500 animate-pulse text-sm">Verifying Security Clearance...</div>;
+  if (role !== "super_admin") return <div className="flex flex-col items-center justify-center h-[80vh] text-center"><Lock size={64} className="text-red-500 opacity-50 mb-2" /><h2 className="text-xl font-black text-red-500 uppercase">ACCESS RESTRICTED</h2><p className="text-sm font-bold text-gray-500">Super Admin access required.</p></div>;
   const [licenses, setLicenses] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [isLoading, setIsLoading] = useState(true);

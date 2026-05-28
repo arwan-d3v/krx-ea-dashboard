@@ -1,12 +1,24 @@
 "use client";
-import { useState } from "react";
-import { ShieldCheck, KeyRound, Server, User, CalendarDays, CheckCircle2, Mail, Send, Phone, Tag, Clock } from "lucide-react";
+import { useState, useEffect } from "react";
+import { ShieldCheck, KeyRound, Server, User, CalendarDays, CheckCircle2, Mail, Send, Phone, Tag, Clock, Lock } from "lucide-react";
 import { db } from "../../lib/firebase";
 import { ref, push, set } from "firebase/database";
 import { useAuth } from "../context/AuthContext";
+import { useRouter } from "next/navigation";
 
 export default function CreateLicense() {
-  const { role, user } = useAuth(); 
+  const { role, user, loading: isAuthLoading } = useAuth();
+  const router = useRouter();
+
+  // RBAC: Hanya super_admin yang boleh akses halaman ini
+  useEffect(() => {
+    if (!isAuthLoading && role && role !== "super_admin") {
+      router.push("/dashboard");
+    }
+  }, [role, isAuthLoading, router]);
+
+  if (isAuthLoading) return <div className="flex h-screen items-center justify-center bg-[#030712] font-mono text-blue-500 animate-pulse text-sm">Verifying Security Clearance...</div>;
+  if (role !== "super_admin") return <div className="flex flex-col items-center justify-center h-[80vh] text-center"><Lock size={64} className="text-red-500 opacity-50 mb-2" /><h2 className="text-xl font-black text-red-500 uppercase">ACCESS RESTRICTED</h2><p className="text-sm font-bold text-gray-500">Super Admin access required.</p></div>;
 
   const [formData, setFormData] = useState({
     investorName: "",

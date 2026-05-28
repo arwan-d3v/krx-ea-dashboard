@@ -204,3 +204,51 @@
 .stat-bg-emerald { background: var(--stat-gradient-emerald); }
 .stat-bg-purple { background: var(--stat-gradient-purple); }
 .stat-bg-yellow { background: var(--stat-gradient-yellow); }
+
+/* ===== DIM-BLINK: Ultra-subtle breathing glow for live badge ===== */
+@keyframes dim-blink {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+.dim-blink {
+  animation: dim-blink 3.2s ease-in-out infinite;
+}
+
+/* Horizontal scroll without visible scrollbar */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* ===== MARQUEE: Continuous running text for ticker ===== */
+@keyframes marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.animate-marquee {
+  animation: marquee 35s linear infinite;
+  animation-play-state: var(--marquee-state, running);
+}
+
+.animate-marquee:hover,
+.animate-marquee.paused {
+  animation-play-state: paused;
+}
+
+.marquee-container {
+  display: flex;
+  width: max-content;
+  will-change: transform;
+}
+
+/* Touch-friendly mobile: allow horizontal swipe */
+@media (max-width: 768px) {
+  .ticker-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+  }
+  .ticker-scroll > * {
+    scroll-snap-align: center;
+  }
+}

@@ -187,7 +187,7 @@ export default function SubscriptionAreaPage() {
 // ADMIN VIEW: Tree Hierarchy + Billing Center + CRUD Management
 // ============================================================================
 function AdminSubscriptionView({ user, role }) {
-  const [tab, setTab] = useState("tree");
+  const [tab, setTab] = useState(role === "super_admin" ? "tree" : "billing");
   const [users, setUsers] = useState({});
   const [accountData, setAccountData] = useState({});
   const [invoices, setInvoices] = useState({});
@@ -272,7 +272,7 @@ function AdminSubscriptionView({ user, role }) {
   const treeData = useMemo(() => {
     const result = [];
     Object.entries(users).forEach(([uid, userData]) => {
-      if (adminManagedUids !== null && !adminManagedUids.has(uid)) return;
+      if (adminManagedUids && !adminManagedUids.has(uid)) return;
       if (!userData.subscriptions) return;
       const vpsList = [];
       Object.entries(userData.subscriptions).forEach(([vpsKey, vpsData]) => {
@@ -508,16 +508,18 @@ function AdminSubscriptionView({ user, role }) {
         </div>
 
         <div className="flex gap-2 mt-6">
-          <button onClick={() => setTab("tree")} className={`px-5 py-2.5 text-sm font-bold rounded-xl transition-all ${tab === "tree" ? "bg-blue-600 text-white shadow-lg shadow-blue-600/25" : "bg-[var(--muted)] text-[var(--muted-foreground)] hover:text-[var(--foreground)]"}`}>
-            <Eye size={16} className="inline mr-2" />Tree View
-          </button>
+          {role === "super_admin" && (
+            <button onClick={() => setTab("tree")} className={`px-5 py-2.5 text-sm font-bold rounded-xl transition-all ${tab === "tree" ? "bg-blue-600 text-white shadow-lg shadow-blue-600/25" : "bg-[var(--muted)] text-[var(--muted-foreground)] hover:text-[var(--foreground)]"}`}>
+              <Eye size={16} className="inline mr-2" />Tree View
+            </button>
+          )}
           <button onClick={() => setTab("billing")} className={`px-5 py-2.5 text-sm font-bold rounded-xl transition-all ${tab === "billing" ? "bg-purple-600 text-white shadow-lg shadow-purple-600/25" : "bg-[var(--muted)] text-[var(--muted-foreground)] hover:text-[var(--foreground)]"}`}>
             <CreditCard size={16} className="inline mr-2" />Billing Center
           </button>
         </div>
       </div>
 
-      {tab === "tree" ? (
+      {tab === "tree" && role === "super_admin" ? (
         <TreeViewHierarchy
           data={treeData} invoices={invoices} role={role}
           editingVps={editingVps} setEditingVps={setEditingVps}

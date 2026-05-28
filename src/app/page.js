@@ -7,6 +7,8 @@ import Link from "next/link";
 import { db } from "../lib/firebase";
 import { ref, onValue } from "firebase/database";
 import FeaturedInvestors from "../components/FeaturedInvestors";
+import LivePortfolioTicker from "../components/LivePortfolioTicker";
+import LabTestingBadge from "../components/LabTestingBadge";
 
 // Custom SVG Shanks Claw untuk Beast Mode
 const ShanksClawMarks = ({ size = 24, className, ...props }) => (
@@ -225,10 +227,10 @@ export default function LandingPage() {
   };
 
   const botArsenal = [
-    { id: "klasik", name: "CLASSIC EA", type: "QUANTITATIVE ALGO", vibe: "Logic Martingale & Hedging Grid", desc: t.bots.klasik, image: "/images/common_bot_mode.webp", accent: "text-blue-500", borderGlow: "group-hover:border-blue-500/50 group-hover:shadow-[0_0_40px_rgba(59,130,246,0.3)]", icon: Cpu },
-    { id: "god", name: "GOD HEALER", type: "MACHINE LEARNING", vibe: "High Precision | Killzone Ratio", desc: t.bots.god, image: "/images/god_mode.jpg", accent: "text-amber-500", borderGlow: "group-hover:border-amber-500/50 group-hover:shadow-[0_0_40px_rgba(245,158,11,0.3)]", icon: Crown },
-    { id: "beast", name: "BEAST WATCHER", type: "MACHINE LEARNING", vibe: "Liquidity Hunter | Maximum Volume", desc: t.bots.beast, image: "/images/beast_mode.webp", accent: "text-red-500", borderGlow: "group-hover:border-red-500/50 group-hover:shadow-[0_0_40px_rgba(239,68,68,0.3)]", icon: ShanksClawMarks },
-    { id: "enigma", name: "ENIGMA OTE", type: "MACHINE LEARNING", vibe: "Spatial Recon | Cipher BPR Anomalies", desc: t.bots.enigma, image: "/images/enigma_mode.webp", accent: "text-emerald-400", borderGlow: "group-hover:border-emerald-500/50 group-hover:shadow-[0_0_40px_rgba(16,185,129,0.3)]", icon: Radar },
+    { id: "klasik", name: "CLASSIC EA", type: "QUANTITATIVE ALGO", vibe: "Logic Martingale & Hedging Grid", desc: t.bots.klasik, image: "/images/common_bot_mode.webp", accent: "text-blue-500", borderGlow: "group-hover:border-blue-500/50 group-hover:shadow-[0_0_40px_rgba(59,130,246,0.3)]", icon: Cpu, isLabTesting: false },
+    { id: "god", name: "GOD HEALER", type: "MACHINE LEARNING", vibe: "High Precision | Killzone Ratio", desc: t.bots.god, image: "/images/god_mode.jpg", accent: "text-amber-500", borderGlow: "group-hover:border-amber-500/50 group-hover:shadow-[0_0_40px_rgba(245,158,11,0.3)]", icon: Crown, isLabTesting: true },
+    { id: "beast", name: "BEAST WATCHER", type: "MACHINE LEARNING", vibe: "Liquidity Hunter | Maximum Volume", desc: t.bots.beast, image: "/images/beast_mode.webp", accent: "text-red-500", borderGlow: "group-hover:border-red-500/50 group-hover:shadow-[0_0_40px_rgba(239,68,68,0.3)]", icon: ShanksClawMarks, isLabTesting: true },
+    { id: "enigma", name: "ENIGMA OTE", type: "MACHINE LEARNING", vibe: "Spatial Recon | Cipher BPR Anomalies", desc: t.bots.enigma, image: "/images/enigma_mode.webp", accent: "text-emerald-400", borderGlow: "group-hover:border-emerald-500/50 group-hover:shadow-[0_0_40px_rgba(16,185,129,0.3)]", icon: Radar, isLabTesting: true },
   ];
 
   return (
@@ -294,6 +296,9 @@ export default function LandingPage() {
             </Link>
           </div>
         </div>
+
+        {/* === LIVE PORTFOLIO TICKER === */}
+        <LivePortfolioTicker lang={lang} />
 
         {/* === ADS BANNER INTERAKTIF === */}
         <div className="max-w-4xl mx-auto mb-24 transition-transform duration-300">
@@ -364,6 +369,7 @@ export default function LandingPage() {
                 onClick={() => setActiveCard(isActive ? null : bot.id)}
                 className={`group relative h-[420px] rounded-3xl overflow-hidden border border-white/10 bg-[#0a0a0a] transition-all duration-500 cursor-pointer ${isActive ? bot.borderGlow.replace(/group-hover:/g, '') : bot.borderGlow}`}
               >
+                {bot.isLabTesting && <LabTestingBadge lang={lang} />}
                 <div className="absolute inset-0 z-0">
                   <Image 
                     src={bot.image} 
