@@ -619,22 +619,6 @@ export default function AnalyticsPage() {
         </div>
 
         <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
-          {/* LANGUAGE TOGGLE */}
-          <div className="flex items-center bg-[var(--background)] p-1 rounded-lg border border-[var(--card-border)] shadow-sm">
-            <button
-              onClick={() => setLang("en")}
-              className={`px-2 py-0.5 text-[10px] font-bold rounded ${lang === "en" ? "bg-[var(--primary)] text-white" : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"}`}
-            >
-              EN
-            </button>
-            <button
-              onClick={() => setLang("id")}
-              className={`px-2 py-0.5 text-[10px] font-bold rounded ${lang === "id" ? "bg-[var(--primary)] text-white" : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"}`}
-            >
-              ID
-            </button>
-          </div>
-
           {/* GROUP SELECTOR (Admin/Super Admin) */}
           {role !== "investor" && groupsList.length > 0 && (
             <div className="w-full sm:w-auto bg-[var(--muted)]/50 p-3.5 rounded-2xl border border-[var(--card-border)] flex flex-col gap-1.5 shadow-sm">
